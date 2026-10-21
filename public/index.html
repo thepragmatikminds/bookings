@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bookings</title>
+<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg"><link rel="apple-touch-icon" href="/icon.svg">
+<meta name="theme-color" content="#0F766E"><meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+:root{--ink:#14213D;--mut:#5B6577;--bd:#E3E7EE;--bg:#F7F8FA;--ac:#0F766E;--acl:#DDF2EF}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.4 'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;min-height:100dvh}
+main{flex:1;width:100%;max-width:760px;margin:0 auto;padding:24px 20px}
+nav{position:sticky;bottom:0;display:flex;gap:6px;padding:8px 12px calc(12px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid var(--bd)}
+nav button{flex:1;min-height:48px;border:0;border-radius:12px;background:none;color:var(--mut);font:inherit;font-weight:500}
+nav button.on{background:var(--acl);color:#0B5F58;font-weight:700}
+h1{margin:2px 0 0;font-size:26px}h2{font-size:16px;margin:22px 0 10px}small,.m{color:var(--mut);font-size:13px}
+.stats{display:flex;gap:10px;margin-top:16px}.stats div,.card{background:#fff;border:1px solid var(--bd);border-radius:14px;padding:12px 14px}
+.stats div{flex:1;font-size:12px;color:var(--mut)}.stats b{display:block;font-size:26px;color:var(--ink)}
+.card{display:flex;align-items:center;gap:14px;margin-bottom:10px}.card .t{width:52px;font-weight:700}.card .g{flex:1;min-width:0}.card .g b,.card .g small{display:block}
+select{min-height:44px;border:1px solid var(--bd);border-radius:999px;padding:0 10px;font:inherit;font-size:13px;font-weight:700;background:#fff;color:var(--ink)}
+select.confirmed,select.done{background:var(--acl);color:#0B5F58}select.pending{background:#FFF1DC;color:#8A4B00}select.cancelled{color:var(--mut)}
+form{display:flex;flex-direction:column;gap:14px}label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700}
+input{min-height:48px;border:1px solid #B8C0CC;border-radius:12px;padding:0 14px;font:inherit;background:#fff;color:var(--ink)}
+.two{display:flex;gap:10px}.two label{flex:1}
+.p{min-height:52px;border:0;border-radius:14px;background:var(--ac);color:#fff;font:inherit;font-size:16px;font-weight:700}
+.g2{min-height:48px;border:1px solid #B8C0CC;border-radius:12px;background:#fff;font:inherit;margin-top:14px;padding:0 16px}
+a{color:#0B5F58}
+@media(min-width:900px){body{flex-direction:row}nav{order:-1;flex-direction:column;justify-content:flex-start;width:220px;height:100dvh;top:0;border-top:0;border-right:1px solid var(--bd);padding:24px 12px}nav button{text-align:left;padding:0 16px}}
+</style></head>
+<body>
+<main id="app" aria-live="polite">Loading…</main>
+<nav aria-label="Main">
+<button data-v="today" class="on">Today</button><button data-v="upcoming">Upcoming</button><button data-v="new">New booking</button><button data-v="settings">Settings</button>
+</nav>
+<script>
+let pin = localStorage.pin || '', S = { business_name: "Nthawi's Furniture", services: '' }, B = [], view = 'today';
+const $ = s => document.querySelector(s);
+const e = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const today = () => new Date().toLocaleDateString('en-CA');
+const fmt = d => new Date(d + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+
+async function api(p, o = {}) {
+  const r = await fetch('/api/' + p, { ...o, headers: { 'content-type': 'application/json', 'x-pin': pin } });
+  if (r.status === 401) { pin = prompt('Enter the app PIN') || ''; if (!pin) throw new Error('PIN required'); localStorage.pin = pin; return api(p, o); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'Something went wrong');
+  return d;
+}
+async function load() { S = await api('settings'); B = await api('bookings?from=' + today()); render(); }
+function go(v) { view = v; document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); render(); }
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => go(b.dataset.v));
+
+const row = b => `<div class="card"><div class="t">${e(b.time)}</div><div class="g"><b>${e(b.client)}</b><small>${e(b.service)}${b.phone ? ` · <a href="tel:${e(b.phone)}">${e(b.phone)}</a>` : ''}${b.notes ? '<br>' + e(b.notes) : ''}</small></div>
+<select class="${b.status}" aria-label="Status for ${e(b.client)}" onchange="setStatus(${b.id},this.value)">${['pending', 'confirmed', 'done', 'cancelled'].map(s => `<option ${s === b.status ? 'selected' : ''}>${s}</option>`).join('')}</select></div>`;
+
+function render() {
+  document.title = S.business_name;
+  const td = today(), tb = B.filter(b => b.date === td && b.status !== 'cancelled');
+  let h = `<header><small>${fmt(td)}</small><h1>${e(S.business_name)}</h1></header>`;
+  if (view === 'today') h += `<div class="stats"><div><b>${tb.length}</b>Today</div><div><b>${B.filter(b => b.status === 'pending').length}</b>Pending requests</div></div><h2>Today</h2>` + (tb.map(row).join('') || '<p class="m">No bookings today.</p>');
+  if (view === 'upcoming') {
+    let last = '';
+    for (const b of B) { if (b.status === 'cancelled') continue; if (b.date !== last) { h += `<h2>${fmt(b.date)}</h2>`; last = b.date; } h += row(b); }
+    if (!last) h += '<p class="m">Nothing booked yet.</p>';
+  }
+  if (view === 'new') h += `<h2>New booking</h2><form onsubmit="add(event)">
+<label>Client<input name="client" required></label><label>Phone<input name="phone" type="tel"></label>
+<label>Service<input name="service" list="sv" required></label><datalist id="sv">${S.services.split(',').map(s => `<option value="${e(s.trim())}">`).join('')}</datalist>
+<div class="two"><label>Date<input name="date" type="date" value="${td}" required></label><label>Time<input name="time" type="time" required></label></div>
+<label>Notes<input name="notes"></label><button class="p">Save booking</button></form>`;
+  if (view === 'settings') h += `<h2>Settings</h2><form onsubmit="save(event)">
+<label>Business name<input name="business_name" value="${e(S.business_name)}" required></label>
+<label>Services (comma separated)<input name="services" value="${e(S.services)}"></label><button class="p">Save settings</button></form>
+<p class="m">Booking form for your website: <a href="/book.html">/book.html</a></p>
+<button class="g2" onclick="pin='';localStorage.pin='';location.reload()">Forget PIN on this device</button>`;
+  $('#app').innerHTML = h;
+}
+async function setStatus(id, status) { try { await api('bookings/' + id, { method: 'PATCH', body: JSON.stringify({ status }) }); await load(); } catch (x) { alert(x.message); } }
+async function add(ev) { ev.preventDefault(); try { await api('bookings', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(ev.target))) }); await load(); go('today'); } catch (x) { alert(x.message); } }
+async function save(ev) { ev.preventDefault(); try { await api('settings', { method: 'PUT', body: JSON.stringify(Object.fromEntries(new FormData(ev.target))) }); await load(); alert('Saved'); } catch (x) { alert(x.message); } }
+load().catch(x => { $('#app').textContent = x.message; });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+</script></body></html>

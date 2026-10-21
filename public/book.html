@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Book an appointment</title>
+<style>
+body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#F7F8FA;color:#14213D}
+main{max-width:480px;margin:0 auto;padding:28px 20px}h1{font-size:24px;margin:0 0 4px}
+form{display:flex;flex-direction:column;gap:14px;margin-top:18px}label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700}
+input,select{min-height:48px;border:1px solid #B8C0CC;border-radius:12px;padding:0 14px;font:inherit;background:#fff}
+button{min-height:52px;border:0;border-radius:14px;background:#0F766E;color:#fff;font:inherit;font-weight:700}
+</style></head><body><main>
+<h1 id="n">Book an appointment</h1><p>Send a request and we will confirm it shortly.</p>
+<form id="f"><label>Your name<input name="client" required></label><label>Phone<input name="phone" type="tel" required></label>
+<label>Service<select name="service" id="s"></select></label>
+<label>Preferred date<input name="date" type="date" required></label><label>Preferred time<input name="time" type="time" required></label>
+<label>Notes<input name="notes"></label><button>Request booking</button></form><p id="msg" role="status"></p>
+<script>
+fetch('/api/request').then(r=>r.json()).then(d=>{n.textContent='Book with '+d.business_name;document.title=n.textContent;s.innerHTML=d.services.split(',').map(x=>'<option>'+x.trim().replace(/</g,'&lt;')+'</option>').join('')});
+f.onsubmit=async ev=>{ev.preventDefault();const r=await fetch('/api/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(f)))});const d=await r.json();msg.textContent=r.ok?'Thank you! We will confirm your booking soon.':d.error;if(r.ok)f.reset()};
+</script></main></body></html>
