@@ -1,19 +1,29 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Book an appointment</title>
-<style>
-body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#F7F8FA;color:#14213D}
-main{max-width:480px;margin:0 auto;padding:28px 20px}h1{font-size:24px;margin:0 0 4px}
-form{display:flex;flex-direction:column;gap:14px;margin-top:18px}label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700}
-input,select{min-height:48px;border:1px solid #B8C0CC;border-radius:12px;padding:0 14px;font:inherit;background:#fff}
-button{min-height:52px;border:0;border-radius:14px;background:#0F766E;color:#fff;font:inherit;font-weight:700}
-</style></head><body><main>
-<h1 id="n">Book an appointment</h1><p>Send a request and we will confirm it shortly.</p>
-<form id="f"><label>Your name<input name="client" required></label><label>Phone<input name="phone" type="tel" required></label>
-<label>Service<select name="service" id="s"></select></label>
-<label>Preferred date<input name="date" type="date" required></label><label>Preferred time<input name="time" type="time" required></label>
-<label>Notes<input name="notes"></label><button>Request booking</button></form><p id="msg" role="status"></p>
+<title>Book an appointment</title><link rel="stylesheet" href="/style.css"></head><body>
+<div class="hero"><small>Appointments</small><h1 id="n">Book an appointment</h1><p id="sub">Choose a service and send your request. We will confirm shortly.</p></div>
+<div class="wrap"><div class="card"><form id="f"><div id="svc">Loading services…</div>
+<label>Your name<input name="client" required autocomplete="name"></label>
+<label>Phone<input name="phone" type="tel" required autocomplete="tel"></label>
+<div class="two"><label>Preferred date<input name="date" type="date" id="d" required></label><label>Preferred time<input name="time" type="time" required></label></div>
+<label>Notes (optional)<input name="notes"></label>
+<button class="p" id="b">Request booking</button><div id="msg" role="status" class="err"></div></form>
+<div id="done" hidden><h3>Request received</h3><p id="sum"></p><p class="m">We will contact you to confirm.</p></div></div></div>
 <script>
-fetch('/api/request').then(r=>r.json()).then(d=>{n.textContent='Book with '+d.business_name;document.title=n.textContent;s.innerHTML=d.services.split(',').map(x=>'<option>'+x.trim().replace(/</g,'&lt;')+'</option>').join('')});
-f.onsubmit=async ev=>{ev.preventDefault();const r=await fetch('/api/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(f)))});const d=await r.json();msg.textContent=r.ok?'Thank you! We will confirm your booking soon.':d.error;if(r.ok)f.reset()};
-</script></main></body></html>
+const slug=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+d.min=new Date().toLocaleDateString('en-CA');
+fetch('/api/request').then(r=>r.json()).then(x=>{
+  n.textContent='Book with '+x.business_name;document.title=n.textContent;
+  let c=JSON.parse(x.catalog);const q=new URLSearchParams(location.search).get('c'),one=c.filter(k=>slug(k.name)===q);
+  if(one.length){c=one;sub.textContent=one[0].name}
+  svc.innerHTML=c.map(k=>'<h3>'+esc(k.name)+'</h3><div class="pills">'+k.services.map(s=>'<label class="pill"><input type="radio" name="service" value="'+esc(s)+'" required><span>'+esc(s)+'</span></label>').join('')+'</div>').join('');
+}).catch(()=>{svc.textContent='Could not load services. Please refresh.'});
+f.onsubmit=async ev=>{ev.preventDefault();b.disabled=true;msg.className='m';msg.textContent='Sending…';
+  try{const v=Object.fromEntries(new FormData(f));
+    const r=await fetch('/api/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(v)});
+    const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Server error '+r.status);
+    sum.textContent=v.service+' on '+v.date+' at '+v.time;f.hidden=true;done.hidden=false;
+  }catch(x){msg.className='err';msg.textContent=x.message||'Could not reach the server. Check your connection and try again.'}
+  finally{b.disabled=false}};
+</script></body></html>
