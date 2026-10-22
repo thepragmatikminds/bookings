@@ -17,3 +17,4 @@ textarea{min-height:130px}input:focus,select:focus,textarea:focus{outline:3px so
 .p,.bt{min-height:52px;border:0;border-radius:14px;background:var(--ac);color:#fff;font:inherit;font-size:16px;font-weight:700;padding:0 18px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer}
 .p:disabled{opacity:.6}.bt.o{background:var(--acl);color:#0B5F58}
 .err{color:#B42318;font-weight:500}.ok{color:#0B5F58}
+.hero small{color:#CDEDE8;opacity:1}

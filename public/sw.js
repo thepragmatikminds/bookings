@@ -1,5 +1,5 @@
-const C = 'v2';
-self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(['/', '/style.css', '/manifest.webmanifest', '/icon.svg']))); self.skipWaiting(); });
+const C = 'v3';
+self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(['/', '/style.css', '/manifest.webmanifest', '/icon.svg', '/apple-touch-icon.png']))); self.skipWaiting(); });
 self.addEventListener('activate', e => e.waitUntil(clients.claim()));
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);

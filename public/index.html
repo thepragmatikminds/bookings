@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Bookings</title>
-<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg"><link rel="apple-touch-icon" href="/icon.svg">
+<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta name="apple-mobile-web-app-title" content="Nthawi's Bookings">
 <link rel="stylesheet" href="/style.css"><meta name="theme-color" content="#0F766E"><meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 body{display:flex;flex-direction:column;min-height:100dvh}main{flex:1}
@@ -12,14 +12,19 @@ nav button.on{background:var(--acl);color:#0B5F58;font-weight:700}
 .stats{display:flex;gap:10px;margin-bottom:12px}.stats div{flex:1;background:#fff;border-radius:16px;padding:12px 14px;font-size:12px;color:var(--mut);box-shadow:0 8px 24px #0f1b2d12}.stats b{display:block;font-size:28px;color:var(--ink)}
 .bk{display:flex;align-items:center;gap:14px}.tm{width:62px;font-weight:700}.tm small{display:block;font-weight:400}.g{flex:1;min-width:0}.g b,.g small,.g a{display:block}
 select.s{min-height:44px;border-radius:999px;padding:0 10px;font-size:13px;font-weight:700}
-select.confirmed,select.done{background:var(--acl);color:#0B5F58}select.pending{background:#FFF1DC;color:#8A4B00}select.cancelled{color:var(--mut)}
+select.confirmed,select.done{background-color:var(--acl);color:#0B5F58}select.pending{background-color:#FFF1DC;color:#8A4B00}select.cancelled{color:var(--mut)}
 .chips{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}.chips button{min-height:44px;padding:0 16px;border:1px solid #C5CCD8;border-radius:999px;background:#fff;font:inherit}.chips .on{background:var(--ac);color:#fff;border-color:var(--ac)}
 .url{font-size:13px;color:var(--mut);word-break:break-all;margin:6px 0 12px}.r2{display:flex;gap:10px}.r2>*{flex:1}
 @media(min-width:900px){body{flex-direction:row}nav{order:-1;flex-direction:column;width:220px;height:100dvh;top:0;border-top:0;border-right:1px solid var(--bd);padding:24px 12px;gap:6px}nav button{text-align:left;padding:0 16px;font-size:15px}.hero,.wrap{max-width:none}.wrap{max-width:760px;margin-left:0;margin-right:auto;padding-left:32px}.hero{padding-left:48px}}
+nav button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px}
+.chips{flex-wrap:nowrap;overflow-x:auto;padding:10px;margin-bottom:12px}.chips button{flex:none;color:var(--ink);text-transform:capitalize}.chips .on{color:#fff}
+select.s{-webkit-appearance:none;appearance:none;padding:0 30px 0 14px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235A6578' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;text-transform:capitalize}
+.g a{text-decoration:none;font-weight:500}
+@media(min-width:900px){nav button{flex-direction:row;justify-content:flex-start;gap:12px}}
 </style></head>
 <body>
 <main id="app" aria-live="polite">Loading…</main>
-<nav aria-label="Main"><button data-v="today" class="on">Overview</button><button data-v="all">Bookings</button><button data-v="new">New</button><button data-v="share">Share</button><button data-v="settings">Settings</button></nav>
+<nav aria-label="Main"><button data-v="today" class="on"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Overview</span></button><button data-v="all"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg><span>Bookings</span></button><button data-v="new"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg><span>New</span></button><button data-v="share"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/></svg><span>Share</span></button><button data-v="settings"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span>Settings</span></button></nav>
 <script>
 let pin=localStorage.pin||'',S={business_name:"Nthawi's Furniture",catalog:'[]'},B=[],view='today',flt='all',L=[];
 const $=s=>document.querySelector(s);
@@ -43,7 +48,7 @@ function render(){
   if(view==='today'){const t=live.filter(b=>b.date===td),p=B.filter(b=>b.status==='pending');
     h=hero(S.business_name,fmt(td))+`<div class="stats"><div><b>${t.length}</b>Today</div><div><b>${p.length}</b>Pending</div><div><b>${live.filter(b=>b.date>=td&&b.date<=wk).length}</b>Next 7 days</div></div>
 <h2>Today</h2>${t.map(row).join('')||'<div class="card m">No bookings today.</div>'}<h2>Waiting for confirmation</h2>${p.map(row).join('')||'<div class="card m">No pending requests.</div>'}`}
-  if(view==='all'){h=hero('Bookings','All appointments')+`<div class="chips">${['all','pending','confirmed','done','cancelled'].map(f=>`<button class="${f===flt?'on':''}" onclick="flt='${f}';render()">${f}</button>`).join('')}</div>`;
+  if(view==='all'){h=hero('Bookings','All appointments')+`<div class="card chips">${['all','pending','confirmed','done','cancelled'].map(f=>`<button class="${f===flt?'on':''}" onclick="flt='${f}';render()">${f}</button>`).join('')}</div>`;
     let last='';const l=B.filter(b=>flt==='all'?b.status!=='cancelled':b.status===flt);
     for(const b of l){if(b.date!==last){h+=`<h2>${fmt(b.date)}</h2>`;last=b.date}h+=row(b)}if(!l.length)h+='<div class="card m">Nothing here yet.</div>'}
   if(view==='new')h=hero('New booking','Add an appointment')+`<div class="card"><form onsubmit="add(event)"><label>Client<input name="client" required></label><label>Phone<input name="phone" type="tel"></label>
