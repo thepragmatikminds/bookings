@@ -11,3 +11,20 @@ run_worker_first = ["/api/*"]
 binding = "DB"
 database_name = "nthawis-bookings"
 database_id = "124c291a-a9f6-4885-8b31-e52bd19635a2"
+
+# ...
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+persist = true
+
+[observability.issue_detection]
+enabled = true
+# ...
+
