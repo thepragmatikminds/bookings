@@ -1,13 +1,13 @@
 const json = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { 'content-type': 'application/json' } });
 const DEFAULT_CATALOG = JSON.stringify([{name:'Pre-Purchase & Design Services',services:['Showroom visit','Design consultation','Home measurement','Custom furniture quote']},{name:'Delivery & Fulfillment Services',services:['Furniture delivery','Assembly & installation','Showroom collection']},{name:'Post-Purchase & Care Services',services:['Repairs','Warranty claim','Upholstery & polish care','Returns & exchanges']}]);
 const DEFAULT_HOURS = '{"open":"08:00","close":"17:00","days":[1,2,3,4,5,6],"slot":60}';
-const COLS = 'id,client,phone,service,date,time,notes,status,created_at,address,amount,assigned,(length(photo)>0) AS has_photo';
+const COLS = 'id,client,phone,service,date,time,notes,status,created_at,address,amount,assigned,price,paid,source,confirmed_at,(length(photo)>0) AS has_photo';
 async function tok(env, id) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode('manage:' + (env.APP_PIN || '')), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return id + '.' + b64u(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(String(id)))).slice(0, 22);
 }
 async function untok(env, t) { const id = String(t || '').split('.')[0]; return id && (await tok(env, id)) === t ? id : null; }
-const STATUSES = ['pending', 'confirmed', 'ready', 'done', 'cancelled'];
+const STATUSES = ['pending', 'confirmed', 'ready', 'done', 'noshow', 'cancelled'];
 
 const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
@@ -17,7 +17,7 @@ const MSGS = {
   pre: { confirmed: 'Hello {name}, your {service} with {business} is confirmed for {date} at {time}. We look forward to seeing you! To change or cancel: {link}', ready: 'Hello {name}, your {service} at {business} is ready for you. Please come by whenever suits you.' },
   delivery: { confirmed: 'Hello {name}, your {service} from {business} is scheduled for {date} at {time}. Please make sure someone is available to receive it. To change or cancel: {link}', ready: 'Hello {name}, your {service} from {business} is ready and on its way. Our team will call you on arrival.' },
   post: { confirmed: 'Hello {name}, your {service} request with {business} is booked for {date} at {time}. To change or cancel: {link}', ready: 'Good news {name}! Your {service} with {business} is complete and ready. Please contact us to arrange collection or delivery.' },
-  generic: { confirmed: 'Hello {name}, your {service} with {business} is confirmed for {date} at {time}. To change or cancel: {link}', ready: 'Hello {name}, your {service} with {business} is ready.', cancelled: 'Hello {name}, your {service} booking on {date} at {time} with {business} has been cancelled. Please contact us to rebook.' },
+  generic: { confirmed: 'Hello {name}, your {service} with {business} is confirmed for {date} at {time}. To change or cancel: {link}', ready: 'Hello {name}, your {service} with {business} is ready.', done: 'Thank you {name} for choosing {business}! We hope you are happy with your {service}. We would love your feedback, a short review helps us a lot.', cancelled: 'Hello {name}, your {service} booking on {date} at {time} with {business} has been cancelled. Please contact us to rebook.' },
 };
 const kind = n => /deliver/i.test(n) ? 'delivery' : /post|care/i.test(n) ? 'post' : /pre|design/i.test(n) ? 'pre' : 'generic';
 
@@ -31,6 +31,7 @@ function waPhone(p, cc) {
 }
 const mergedMsgs = s => { let o = {}; try { o = JSON.parse(s.messages || '{}'); } catch {} return Object.fromEntries(Object.keys(MSGS).map(k => [k, { ...MSGS[k], ...(o[k] || {}) }])); };
 const reminder = (b, s, link = '') => `Hello ${b.client}, a reminder that your ${b.service} with ${s.business_name} is tomorrow at ${b.time}. To reschedule or cancel: ${link}`;
+const followup = (b, s) => `Hello ${b.client}, it has been a while since your ${b.service} with ${s.business_name}. Is there anything we can help with, such as a new piece, a repair or a design consultation?`;
 function message(b, s, link = '') {
   let cat; try { cat = JSON.parse(s.catalog).find(c => c.services.includes(b.service)); } catch {}
   const M = mergedMsgs(s), tpl = (M[kind(cat ? cat.name : '')] || {})[b.status] || M.generic[b.status];
@@ -76,6 +77,7 @@ async function settings(db) {
   o.hours = o.hours || DEFAULT_HOURS;
   o.brand = o.brand || '#0F766E';
   o.team = o.team || '[]';
+  o.currency = o.currency || 'MWK';
   o.messages = JSON.stringify(mergedMsgs(o));
   return o;
 }
@@ -83,7 +85,7 @@ async function settings(db) {
 async function insert(env, b, status, after) {
   const db = env.DB;
   const c = s => String(s || '').trim().slice(0, 300);
-  const v = { client: c(b.client), phone: c(b.phone), service: c(b.service), date: c(b.date), time: c(b.time), notes: c(b.notes), address: c(b.address), amount: c(b.amount), assigned: c(b.assigned) };
+  const v = { client: c(b.client), phone: c(b.phone), service: c(b.service), date: c(b.date), time: c(b.time), notes: c(b.notes), address: c(b.address), amount: c(b.amount), assigned: c(b.assigned), source: status === 'pending' ? (c(b.source) || 'general') : 'staff' };
   const photo = typeof b.photo === 'string' && b.photo.startsWith('data:image/') && b.photo.length < 400000 ? b.photo : '';
   if (!v.client || !v.service || !/^\d{4}-\d\d-\d\d$/.test(v.date) || !/^\d\d:\d\d$/.test(v.time)) return json({ error: 'Please fill in client, service, date and time.' }, 400);
   if (status === 'pending') {
@@ -92,8 +94,8 @@ async function insert(env, b, status, after) {
   }
   const clash = await db.prepare("SELECT id FROM bookings WHERE date=? AND time=? AND status!='cancelled'").bind(v.date, v.time).first();
   if (clash) return json({ error: 'That time slot is already taken.' }, 409);
-  const r = await db.prepare('INSERT INTO bookings (client,phone,service,date,time,notes,address,amount,assigned,photo,status) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-    .bind(v.client, v.phone, v.service, v.date, v.time, v.notes, v.address, v.amount, v.assigned, photo, status).run();
+  const r = await db.prepare('INSERT INTO bookings (client,phone,service,date,time,notes,address,amount,assigned,photo,price,paid,source,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .bind(v.client, v.phone, v.service, v.date, v.time, v.notes, v.address, v.amount, v.assigned, photo, status === 'pending' ? 0 : Math.max(0, +b.price || 0), status === 'pending' ? 0 : Math.max(0, +b.paid || 0), v.source, status).run();
   if (after) after();
   return json({ id: r.meta.last_row_id, token: await tok(env, r.meta.last_row_id) }, 201);
 }
@@ -106,7 +108,8 @@ async function handle({ request, env, ctx, params }) {
   // Public: website booking requests (always saved as "pending")
   if (res === 'request') {
     if (m === 'GET') {
-      const s = await settings(db), d = new URL(request.url).searchParams.get('date');
+      const s = await settings(db), d = new URL(request.url).searchParams.get('date'), vv = new URL(request.url).searchParams.get('v');
+      if (vv) try { await db.prepare('INSERT INTO visits (day,source,n) VALUES (?,?,1) ON CONFLICT(day,source) DO UPDATE SET n=n+1').bind(new Date().toISOString().slice(0, 10), vv.slice(0, 40)).run(); } catch {}
       const taken = d ? (await db.prepare("SELECT time FROM bookings WHERE date=? AND status!='cancelled'").bind(d).all()).results.map(r => r.time) : [];
       return json({ business_name: s.business_name, catalog: s.catalog, hours: s.hours, brand: s.brand, logo: s.logo, taken });
     }
@@ -138,11 +141,15 @@ async function handle({ request, env, ctx, params }) {
   if (!owner && !mate) return json({ error: 'Wrong or missing PIN' }, 401);
   const me = owner ? 'Owner' : mate.name;
 
+  if (res === 'visits' && m === 'GET') {
+    if (!owner) return json({ error: 'Owner only' }, 403);
+    try { return json((await db.prepare('SELECT day,source,n FROM visits WHERE day>=?').bind(new URL(request.url).searchParams.get('from') || '0000').all()).results); } catch { return json([]); }
+  }
   if (res === 'photo' && id) { const r = await db.prepare('SELECT photo FROM bookings WHERE id=?').bind(id).first(); return json({ photo: r ? r.photo : '' }); }
   if (res === 'export' && m === 'GET') {
     if (!owner) return json({ error: 'Owner only' }, 403);
     const { results } = await db.prepare('SELECT * FROM bookings ORDER BY date,time').all();
-    const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"', cols = ['id', 'date', 'time', 'client', 'phone', 'service', 'status', 'address', 'amount', 'notes'];
+    const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"', cols = ['id', 'date', 'time', 'client', 'phone', 'service', 'status', 'address', 'amount', 'price', 'paid', 'source', 'notes'];
     return new Response([cols.join(','), ...results.map(r => cols.map(c => q(r[c])).join(','))].join('\n'), { headers: { 'content-type': 'text/csv' } });
   }
   if (res === 'push') {
@@ -153,7 +160,7 @@ async function handle({ request, env, ctx, params }) {
   if (res === 'settings') {
     if (m === 'PUT') {
       if (!owner) return json({ error: 'Only the owner can change settings' }, 403);
-      for (const k of ['business_name', 'catalog', 'country_code', 'hours', 'messages', 'brand', 'team', 'logo']) if (typeof body[k] === 'string' && body[k].trim())
+      for (const k of ['business_name', 'catalog', 'country_code', 'hours', 'messages', 'brand', 'team', 'logo', 'currency']) if (typeof body[k] === 'string' && body[k].trim())
         await db.prepare('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(k, body[k].trim().slice(0, k === 'logo' ? 150000 : 4000)).run();
     }
     const s = await settings(db), names = JSON.parse(s.team || '[]').map(x => x.name);
@@ -166,15 +173,16 @@ async function handle({ request, env, ctx, params }) {
       const { results } = await db.prepare(`SELECT ${COLS} FROM bookings WHERE date>=? ORDER BY date,time`).bind(from).all();
       const s = await settings(db), cc = String(s.country_code).replace(/\D/g, '') || '265';
       const origin = new URL(request.url).origin;
-      return json(await Promise.all(results.map(async b => { const link = origin + '/manage.html?t=' + await tok(env, b.id); return { ...b, wa: waPhone(b.phone, cc), msg: message(b, s, link), rem: reminder(b, s, link) }; })));
+      return json(await Promise.all(results.map(async b => { const link = origin + '/manage.html?t=' + await tok(env, b.id); return { ...b, wa: waPhone(b.phone, cc), msg: message(b, s, link), rem: reminder(b, s, link), fu: followup(b, s) }; })));
     }
     if (m === 'POST') return insert(env, body, 'confirmed');
     if (m === 'PATCH' && id) {
       const sets = [], vals = [];
-      for (const k of ['status', 'client', 'phone', 'service', 'date', 'time', 'notes', 'address', 'amount', 'assigned']) if (k in body) {
+      for (const k of ['status', 'client', 'phone', 'service', 'date', 'time', 'notes', 'address', 'amount', 'assigned', 'price', 'paid']) if (k in body) {
         if (k === 'status' && !STATUSES.includes(body.status)) return json({ error: 'Bad status' }, 400);
-        sets.push(k + '=?'); vals.push(String(body[k]).slice(0, 300));
+        sets.push(k + '=?'); vals.push(k === 'price' || k === 'paid' ? Math.max(0, +body[k] || 0) : String(body[k]).slice(0, 300));
       }
+      if (['confirmed', 'ready', 'done'].includes(body.status)) sets.push("confirmed_at=COALESCE(NULLIF(confirmed_at,''),CURRENT_TIMESTAMP)");
       if (!sets.length) return json({ error: 'Nothing to update' }, 400);
       if (body.date && body.time && await db.prepare("SELECT id FROM bookings WHERE date=? AND time=? AND status!='cancelled' AND id!=?").bind(body.date, body.time, id).first()) return json({ error: 'That time slot is already taken.' }, 409);
       await db.prepare(`UPDATE bookings SET ${sets.join(',')} WHERE id=?`).bind(...vals, id).run();
