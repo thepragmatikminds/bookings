@@ -1,5 +1,6 @@
 const json = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { 'content-type': 'application/json' } });
 const DEFAULT_CATALOG = JSON.stringify([{name:'Pre-Purchase & Design Services',services:['Showroom visit','Design consultation','Home measurement','Custom furniture quote']},{name:'Delivery & Fulfillment Services',services:['Furniture delivery','Assembly & installation','Showroom collection']},{name:'Post-Purchase & Care Services',services:['Repairs','Warranty claim','Upholstery & polish care','Returns & exchanges']}]);
+const DEFAULT_HOURS = '{"open":"08:00","close":"17:00","days":[1,2,3,4,5,6],"slot":60}';
 const STATUSES = ['pending', 'confirmed', 'ready', 'done', 'cancelled'];
 
 const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -22,9 +23,11 @@ function waPhone(p, cc) {
   if (d.startsWith('0')) return cc + d.slice(1);
   return d.startsWith(cc) ? d : cc + d;
 }
+const mergedMsgs = s => { let o = {}; try { o = JSON.parse(s.messages || '{}'); } catch {} return Object.fromEntries(Object.keys(MSGS).map(k => [k, { ...MSGS[k], ...(o[k] || {}) }])); };
+const reminder = (b, s) => `Hello ${b.client}, a reminder that your ${b.service} with ${s.business_name} is tomorrow at ${b.time}. Please reply if you need to reschedule.`;
 function message(b, s) {
   let cat; try { cat = JSON.parse(s.catalog).find(c => c.services.includes(b.service)); } catch {}
-  const tpl = (MSGS[kind(cat ? cat.name : '')] || {})[b.status] || MSGS.generic[b.status];
+  const M = mergedMsgs(s), tpl = (M[kind(cat ? cat.name : '')] || {})[b.status] || M.generic[b.status];
   if (!tpl) return '';
   const v = { name: b.client, service: b.service, date: b.date, time: b.time, business: s.business_name };
   return tpl.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '');
@@ -64,17 +67,23 @@ async function settings(db) {
   const o = Object.fromEntries(results.map(r => [r.key, r.value]));
   o.catalog = o.catalog || DEFAULT_CATALOG;
   o.country_code = o.country_code || '265';
+  o.hours = o.hours || DEFAULT_HOURS;
+  o.messages = JSON.stringify(mergedMsgs(o));
   return o;
 }
 
 async function insert(db, b, status, after) {
   const c = s => String(s || '').trim().slice(0, 300);
-  const v = { client: c(b.client), phone: c(b.phone), service: c(b.service), date: c(b.date), time: c(b.time), notes: c(b.notes) };
+  const v = { client: c(b.client), phone: c(b.phone), service: c(b.service), date: c(b.date), time: c(b.time), notes: c(b.notes), address: c(b.address), amount: c(b.amount) };
   if (!v.client || !v.service || !/^\d{4}-\d\d-\d\d$/.test(v.date) || !/^\d\d:\d\d$/.test(v.time)) return json({ error: 'Please fill in client, service, date and time.' }, 400);
+  if (status === 'pending') {
+    const h = JSON.parse((await settings(db)).hours), dow = new Date(v.date + 'T00:00:00Z').getUTCDay();
+    if (!h.days.includes(dow) || v.time < h.open || v.time > h.close) return json({ error: 'We are closed at that time. Please pick one of the available times.' }, 400);
+  }
   const clash = await db.prepare("SELECT id FROM bookings WHERE date=? AND time=? AND status!='cancelled'").bind(v.date, v.time).first();
   if (clash) return json({ error: 'That time slot is already taken.' }, 409);
-  const r = await db.prepare('INSERT INTO bookings (client,phone,service,date,time,notes,status) VALUES (?,?,?,?,?,?,?)')
-    .bind(v.client, v.phone, v.service, v.date, v.time, v.notes, status).run();
+  const r = await db.prepare('INSERT INTO bookings (client,phone,service,date,time,notes,address,amount,status) VALUES (?,?,?,?,?,?,?,?,?)')
+    .bind(v.client, v.phone, v.service, v.date, v.time, v.notes, v.address, v.amount, status).run();
   if (after) after();
   return json({ id: r.meta.last_row_id }, 201);
 }
@@ -86,13 +95,22 @@ async function handle({ request, env, ctx, params }) {
 
   // Public: website booking requests (always saved as "pending")
   if (res === 'request') {
-    if (m === 'GET') { const s = await settings(db); return json({ business_name: s.business_name, catalog: s.catalog }); }
+    if (m === 'GET') {
+      const s = await settings(db), d = new URL(request.url).searchParams.get('date');
+      const taken = d ? (await db.prepare("SELECT time FROM bookings WHERE date=? AND status!='cancelled'").bind(d).all()).results.map(r => r.time) : [];
+      return json({ business_name: s.business_name, catalog: s.catalog, hours: s.hours, taken });
+    }
     if (m === 'POST') return insert(db, body, 'pending', () => ctx.waitUntil(pushAll(env, new URL(request.url).origin)));
   }
 
   // Everything else needs the PIN (set APP_PIN as a secret in Cloudflare)
   if (!env.APP_PIN || request.headers.get('x-pin') !== env.APP_PIN) return json({ error: 'Wrong or missing PIN' }, 401);
 
+  if (res === 'export' && m === 'GET') {
+    const { results } = await db.prepare('SELECT * FROM bookings ORDER BY date,time').all();
+    const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"', cols = ['id', 'date', 'time', 'client', 'phone', 'service', 'status', 'address', 'amount', 'notes'];
+    return new Response([cols.join(','), ...results.map(r => cols.map(c => q(r[c])).join(','))].join('\n'), { headers: { 'content-type': 'text/csv' } });
+  }
   if (res === 'push') {
     if (id === 'key' && m === 'GET') return json({ key: (await vapid(db)).pub });
     if (id === 'subscribe' && m === 'POST' && body.endpoint) { await db.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').bind('push:' + body.endpoint, JSON.stringify(body)).run(); return json({ ok: true }); }
@@ -100,7 +118,7 @@ async function handle({ request, env, ctx, params }) {
   }
   if (res === 'settings') {
     if (m === 'PUT') {
-      for (const k of ['business_name', 'catalog', 'country_code']) if (typeof body[k] === 'string' && body[k].trim())
+      for (const k of ['business_name', 'catalog', 'country_code', 'hours', 'messages']) if (typeof body[k] === 'string' && body[k].trim())
         await db.prepare('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(k, body[k].trim().slice(0, 4000)).run();
     }
     return json(await settings(db));
@@ -110,11 +128,18 @@ async function handle({ request, env, ctx, params }) {
       const from = new URL(request.url).searchParams.get('from') || '0000-00-00';
       const { results } = await db.prepare('SELECT * FROM bookings WHERE date>=? ORDER BY date,time').bind(from).all();
       const s = await settings(db), cc = String(s.country_code).replace(/\D/g, '') || '265';
-      return json(results.map(b => ({ ...b, wa: waPhone(b.phone, cc), msg: message(b, s) })));
+      return json(results.map(b => ({ ...b, wa: waPhone(b.phone, cc), msg: message(b, s), rem: reminder(b, s) })));
     }
     if (m === 'POST') return insert(db, body, 'confirmed');
-    if (m === 'PATCH' && id && STATUSES.includes(body.status)) {
-      await db.prepare('UPDATE bookings SET status=? WHERE id=?').bind(body.status, id).run();
+    if (m === 'PATCH' && id) {
+      const sets = [], vals = [];
+      for (const k of ['status', 'client', 'phone', 'service', 'date', 'time', 'notes', 'address', 'amount']) if (k in body) {
+        if (k === 'status' && !STATUSES.includes(body.status)) return json({ error: 'Bad status' }, 400);
+        sets.push(k + '=?'); vals.push(String(body[k]).slice(0, 300));
+      }
+      if (!sets.length) return json({ error: 'Nothing to update' }, 400);
+      if (body.date && body.time && await db.prepare("SELECT id FROM bookings WHERE date=? AND time=? AND status!='cancelled' AND id!=?").bind(body.date, body.time, id).first()) return json({ error: 'That time slot is already taken.' }, 409);
+      await db.prepare(`UPDATE bookings SET ${sets.join(',')} WHERE id=?`).bind(...vals, id).run();
       return json({ ok: true });
     }
     if (m === 'DELETE' && id) { await db.prepare('DELETE FROM bookings WHERE id=?').bind(id).run(); return json({ ok: true }); }

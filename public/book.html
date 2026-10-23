@@ -5,7 +5,7 @@
 <div class="wrap"><div class="card"><form id="f"><div id="svc">Loading services…</div>
 <label>Your name<input name="client" required autocomplete="name"></label>
 <label>Phone<input name="phone" type="tel" required autocomplete="tel"></label>
-<div class="two"><label>Preferred date<input name="date" type="date" id="d" required></label><label>Preferred time<input name="time" type="time" required></label></div>
+<div class="two"><label>Preferred date<input name="date" type="date" id="d" required></label><div><b style="font-size:13px">Available times</b><div id="slots" class="pills" style="margin-top:8px"><span class="m">Pick a date first.</span></div></div><label>Address (for delivery or installation)<input name="address" autocomplete="street-address"></label></div>
 <label>Notes (optional)<input name="notes"></label>
 <button class="p" id="b">Request booking</button><div id="msg" role="status" class="err"></div></form>
 <div id="done" hidden><h3>Request received</h3><p id="sum"></p><p class="m">We will contact you to confirm.</p></div></div></div>
@@ -13,6 +13,13 @@
 const slug=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 d.min=new Date().toLocaleDateString('en-CA');
+let H={days:[0,1,2,3,4,5,6],open:'08:00',close:'17:00',slot:60};
+d.onchange=async()=>{slots.textContent='Loading times…';
+  try{const x=await (await fetch('/api/request?date='+d.value)).json();H=JSON.parse(x.hours);
+    const m=t=>{const[a,b]=t.split(':');return a*60+ +b},now=new Date(),isT=d.value===now.toLocaleDateString('en-CA'),cur=now.getHours()*60+now.getMinutes(),out=[];
+    if(H.days.includes(new Date(d.value+'T00:00:00').getDay()))for(let t=m(H.open);t+H.slot<=m(H.close);t+=H.slot){const s=String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');if(!x.taken.includes(s)&&!(isT&&t<=cur))out.push(s)}
+    slots.innerHTML=out.length?out.map(s=>'<label class="pill"><input type="radio" name="time" value="'+s+'" required><span>'+s+'</span></label>').join(''):'<span class="m">No times available on this day. Please pick another date.</span>'
+  }catch{slots.textContent='Could not load times. Please try again.'}};
 fetch('/api/request').then(r=>r.json()).then(x=>{
   n.textContent='Book with '+x.business_name;document.title=n.textContent;
   let c=JSON.parse(x.catalog);const q=new URLSearchParams(location.search).get('c'),one=c.filter(k=>slug(k.name)===q);

@@ -15,3 +15,6 @@ Installable web app (PWA) for phone and laptop. Cloudflare Worker (static assets
 
 ## Notes
 - Add 192x192 and 512x512 PNG icons to `manifest.webmanifest` for the best install prompt on all phones.
+
+## Updating an existing database
+Run `migrate-1.sql` once in the D1 console (adds address and price columns) BEFORE deploying this version.
