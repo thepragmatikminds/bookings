@@ -20,3 +20,5 @@ Installable web app (PWA) for phone and laptop. Cloudflare Worker (static assets
 Run `migrate-1.sql` once in the D1 console (adds address and price columns) BEFORE deploying this version.
 Also run `migrate-2.sql` once (adds assigned-to and photo columns) before deploying this version.
 Also run `migrate-3.sql` once (adds price, payments, source tracking, visit counts) before deploying the Insights version.
+Also run `migrate-4.sql` once (soft delete, activity log, waiting list, spam limits). Deleted bookings stay restorable for 30 days.
+Backups: D1 keeps 30 days of point-in-time restore (Time Travel). For weekly file backups, connect an R2 bucket as described in `wrangler.toml`.

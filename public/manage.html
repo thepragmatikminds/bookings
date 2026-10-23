@@ -4,12 +4,15 @@
 <div class="hero"><small>Your booking</small><h1 id="n">Manage booking</h1></div>
 <div class="wrap"><div class="card" id="c">Loading…</div></div>
 <script>
+let X={};
 const t=new URLSearchParams(location.search).get('t')||'',esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const post=b=>fetch('/api/manage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({t,...b})}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Something went wrong');return j});
-function show(b){c.innerHTML='<h3 style="margin-top:0">'+esc(b.service)+'</h3><p>'+esc(b.date)+' at '+esc(b.time)+'<br><small>Status: '+esc(b.status)+'</small></p>'+(b.status==='cancelled'?'<p class="m">This booking was cancelled. Please contact us to book again.</p>':
+const map=a=>' <a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(a)+'">Map</a>';
+const extra=b=>(b.stage?'<p>Progress: <b>'+esc(b.stage)+'</b></p>':'')+(b.price>0?'<p>Price: '+esc(b.price)+', paid: '+esc(b.paid||0)+', balance: <b>'+esc(Math.max(0,b.price-(b.paid||0)))+'</b></p>':'')+(b.address?'<p>Delivery address: '+esc(b.address)+map(b.address)+'</p>':'')+(X.showroom?'<p>Find us: '+esc(X.showroom)+map(X.showroom)+'</p>':'')+(X.payinfo?'<p style="white-space:pre-line"><b>How to pay</b>\n'+esc(X.payinfo)+'</p>':'');
+function show(b){c.innerHTML='<h3 style="margin-top:0">'+esc(b.service)+'</h3><p>'+esc(b.date)+' at '+esc(b.time)+'<br><small>Status: '+esc(b.status)+'</small></p>'+extra(b)+(b.status==='cancelled'?'<p class="m">This booking was cancelled. Please contact us to book again.</p>':
  '<form id="f"><label>New date<input type="date" name="date" required min="'+new Date().toLocaleDateString('en-CA')+'"></label><label>New time<input type="time" name="time" required></label><button class="p">Request new time</button><div id="msg" role="status" class="err"></div></form><button class="bt o" id="x" style="width:100%;margin-top:12px;color:#B42318">Cancel this booking</button>');
  const f=document.getElementById('f');if(!f)return;
  f.onsubmit=async ev=>{ev.preventDefault();msg.textContent='Sending…';try{const v=Object.fromEntries(new FormData(f));await post({action:'move',...v});show({...b,date:v.date,time:v.time,status:'pending'});alert('Your new time was requested. We will confirm it shortly.')}catch(x){msg.textContent=x.message}};
  x.onclick=async()=>{if(!confirm('Cancel this booking?'))return;try{await post({action:'cancel'});show({...b,status:'cancelled'})}catch(x){alert(x.message)}}}
-fetch('/api/manage?t='+encodeURIComponent(t)).then(async r=>{const j=await r.json();if(!r.ok)throw new Error(j.error);n.textContent=j.business_name;document.title=j.business_name;if(j.brand)document.documentElement.style.setProperty('--ac',j.brand);show(j)}).catch(x=>{c.textContent=x.message||'This link is not valid.'});
+fetch('/api/manage?t='+encodeURIComponent(t)).then(async r=>{const j=await r.json();if(!r.ok)throw new Error(j.error);n.textContent=j.business_name;document.title=j.business_name;if(j.brand)document.documentElement.style.setProperty('--ac',j.brand);X=j;show(j)}).catch(x=>{c.textContent=x.message||'This link is not valid.'});
 </script></body></html>

@@ -12,6 +12,15 @@ binding = "DB"
 database_name = "nthawis-bookings"
 database_id = "124c291a-a9f6-4885-8b31-e52bd19635a2"
 
+# Weekly clean-up (and backup, if the R2 bucket below is connected). Mondays 03:00 UTC.
+[triggers]
+crons = ["0 3 * * 1"]
+
+# Optional backups: create an R2 bucket named nthawis-backups, then remove the # signs below.
+# [[r2_buckets]]
+# binding = "BACKUPS"
+# bucket_name = "nthawis-backups"
+
 # ...
 [observability.logs]
 enabled = true

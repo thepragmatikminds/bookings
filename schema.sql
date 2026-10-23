@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS bookings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client TEXT NOT NULL, phone TEXT DEFAULT '', service TEXT NOT NULL,
-  date TEXT NOT NULL, time TEXT NOT NULL, notes TEXT DEFAULT '', address TEXT DEFAULT '', assigned TEXT DEFAULT '', photo TEXT DEFAULT '', price REAL DEFAULT 0, paid REAL DEFAULT 0, source TEXT DEFAULT '', confirmed_at TEXT DEFAULT '', amount TEXT DEFAULT '',
+  date TEXT NOT NULL, time TEXT NOT NULL, notes TEXT DEFAULT '', address TEXT DEFAULT '', assigned TEXT DEFAULT '', photo TEXT DEFAULT '', stage TEXT DEFAULT '', deleted_at TEXT DEFAULT '', price REAL DEFAULT 0, paid REAL DEFAULT 0, source TEXT DEFAULT '', confirmed_at TEXT DEFAULT '', amount TEXT DEFAULT '',
   status TEXT NOT NULL DEFAULT 'pending',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -10,3 +10,6 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 INSERT OR IGNORE INTO settings VALUES ('business_name', 'Nthawi''s Furniture');
 INSERT OR IGNORE INTO settings VALUES ('services', 'Showroom visit,Measurement visit,Delivery,Repair');
 CREATE TABLE IF NOT EXISTS visits (day TEXT, source TEXT, n INTEGER DEFAULT 0, PRIMARY KEY (day, source));
+CREATE TABLE IF NOT EXISTS limits (key TEXT PRIMARY KEY, n INTEGER DEFAULT 0, ts INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT CURRENT_TIMESTAMP, who TEXT, action TEXT);
+CREATE TABLE IF NOT EXISTS waitlist (id INTEGER PRIMARY KEY AUTOINCREMENT, client TEXT, phone TEXT, service TEXT, date TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);

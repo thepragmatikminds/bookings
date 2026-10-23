@@ -4,13 +4,14 @@
 <div class="hero"><small>Appointments</small><h1 id="n">Book an appointment</h1><p id="sub">Choose a service and send your request. We will confirm shortly.</p></div>
 <div class="wrap"><div class="card"><form id="f"><label id="catl">Service group<select id="cat" required><option value="">Loading…</option></select></label>
 <label>Service<select name="service" id="sv" required disabled><option value="">Choose a group first</option></select></label>
-<label>Your name<input name="client" required autocomplete="name"></label>
+<input name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0"><label>Your name<input name="client" required autocomplete="name"></label>
 <label>Phone<input name="phone" type="tel" required autocomplete="tel"></label>
 <label>Preferred date<input name="date" type="date" id="d" required></label><div><div style="display:flex;flex-direction:column;gap:6px"><b style="font-size:13px">Available times</b><div id="slots"><span class="m">Pick a date first.</span></div></div><label>Address (for delivery or installation)<input name="address" autocomplete="street-address"></label>
 <label>Notes (optional)<input name="notes"></label><label>Photo (optional, helpful for repairs)<input type="file" id="ph" accept="image/*"></label>
 <button class="p" id="b">Request booking</button><div id="msg" role="status" class="err"></div></form>
 <div id="done" hidden><h3>Request received</h3><p id="sum"></p><p class="m">We will contact you to confirm.</p></div></div></div>
 <script>
+let X={};
 const SRC=new URLSearchParams(location.search).get('c')||'general';
 const shrink=(f,mx,t='image/jpeg',q=.7)=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>{const r=Math.min(1,mx/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*r;c.height=i.height*r;c.getContext('2d').drawImage(i,0,0,c.width,c.height);ok(c.toDataURL(t,q))};i.onerror=no;i.src=URL.createObjectURL(f)});
 const slug=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
@@ -21,21 +22,25 @@ d.onchange=async()=>{slots.textContent='Loading times…';
   try{const x=await (await fetch('/api/request?date='+d.value)).json();H=JSON.parse(x.hours);
     const m=t=>{const[a,b]=t.split(':');return a*60+ +b},now=new Date(),isT=d.value===now.toLocaleDateString('en-CA'),cur=now.getHours()*60+now.getMinutes(),out=[];
     if(H.days.includes(new Date(d.value+'T00:00:00').getDay()))for(let t=m(H.open);t+H.slot<=m(H.close);t+=H.slot){const s=String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');if(!x.taken.includes(s)&&!(isT&&t<=cur))out.push(s)}
-    slots.innerHTML=out.length?out.map(s=>'<label class="pill"><input type="radio" name="time" value="'+s+'" required><span>'+s+'</span></label>').join(''):'<span class="m">No times available on this day. Please pick another date.</span>'
+    slots.innerHTML=out.length?out.map(s=>'<label class="pill"><input type="radio" name="time" value="'+s+'" required><span>'+s+'</span></label>').join(''):'<span class="m">No times available on this day. Please pick another date, or join the waiting list and we will contact you if a slot opens.</span><button type="button" class="bt o" id="wl" style="grid-column:1/-1">Join the waiting list for this day</button>'
+  ;const wb=document.getElementById('wl');if(wb)wb.onclick=join
   }catch{slots.textContent='Could not load times. Please try again.'}};
 fetch('/api/request?v='+encodeURIComponent(SRC)).then(r=>r.json()).then(x=>{
-  n.textContent='Book with '+x.business_name;if(x.brand)document.documentElement.style.setProperty('--ac',x.brand);if(x.logo){const i=new Image();i.src=x.logo;i.className='logo';i.alt='';n.before(i)}document.title=n.textContent;
+  n.textContent='Book with '+x.business_name;X=x;if(x.brand)document.documentElement.style.setProperty('--ac',x.brand);if(x.logo){const i=new Image();i.src=x.logo;i.className='logo';i.alt='';n.before(i)}document.title=n.textContent;
   let c=JSON.parse(x.catalog);const q=new URLSearchParams(location.search).get('c'),one=c.filter(k=>slug(k.name)===q);
   if(one.length){c=one;sub.textContent=one[0].name}
   cat.innerHTML='<option value="">Choose a service group</option>'+c.map((k,i)=>'<option value="'+i+'">'+esc(k.name)+'</option>').join('');
   const fill=()=>{const k=c[cat.value];sv.disabled=!k;sv.innerHTML='<option value="">'+(k?'Choose a service':'Choose a group first')+'</option>'+(k?k.services.map(s=>'<option>'+esc(s)+'</option>').join(''):'')};
   cat.onchange=fill;if(c.length===1){cat.value=0;catl.style.display='none'}fill();
 }).catch(()=>{cat.innerHTML='<option value="">Could not load services. Please refresh.</option>'});
+async function join(){const v=Object.fromEntries(new FormData(f));if(!v.client||!v.phone||!v.service)return alert('Please fill in your name, phone and service first.');
+  msg.className='m';msg.textContent='Sending…';
+  try{const r=await fetch('/api/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({waitlist:true,client:v.client,phone:v.phone,service:v.service,date:v.date,website:v.website})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Server error '+r.status);msg.className='ok';msg.textContent='You are on the waiting list. We will contact you if a slot opens.'}catch(x){msg.className='err';msg.textContent=x.message}}
 f.onsubmit=async ev=>{ev.preventDefault();b.disabled=true;msg.className='m';msg.textContent='Sending…';
   try{const v=Object.fromEntries(new FormData(f));v.source=SRC;if(ph.files[0])v.photo=await shrink(ph.files[0],900);
     const r=await fetch('/api/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(v)});
     const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Server error '+r.status);
-    sum.textContent=v.service+' on '+v.date+' at '+v.time+'. ';const a=document.createElement('a');a.href='/manage.html?t='+j.token;a.textContent='Change or cancel this booking';sum.append(a);f.hidden=true;done.hidden=false;
+    sum.textContent=v.service+' on '+v.date+' at '+v.time+'. ';const a=document.createElement('a');a.href='/manage.html?t='+j.token;a.textContent='Change or cancel this booking';sum.append(a);if(X.payinfo){const p=document.createElement('p');p.style.whiteSpace='pre-line';p.textContent='To pay a deposit, send it to:\n'+X.payinfo;done.append(p)}f.hidden=true;done.hidden=false;
   }catch(x){msg.className='err';msg.textContent=x.message||'Could not reach the server. Check your connection and try again.'}
   finally{b.disabled=false}};
 </script></body></html>
