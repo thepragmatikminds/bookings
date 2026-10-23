@@ -20,3 +20,8 @@ textarea{min-height:130px}input:focus,select:focus,textarea:focus{outline:3px so
 .hero small{color:color-mix(in srgb,var(--ac) 20%,#fff);opacity:1}
 .logo{height:44px;max-width:160px;object-fit:contain;border-radius:10px;margin-bottom:10px;display:block}
 .pill.sw span,.pill.sw input:checked+span{background:var(--c);border-color:var(--c);color:#fff}.pill.sw input:checked+span{box-shadow:0 0 0 3px #fff,0 0 0 5px var(--ink)}
+[hidden]{display:none!important}
+input:not([type=radio]):not([type=checkbox]),textarea{display:block;width:100%;min-width:0;-webkit-appearance:none;appearance:none}
+input[type=file]{padding:10px 14px}
+select{width:100%;-webkit-appearance:none;appearance:none;padding-right:42px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235A6578' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 15px center}
+#slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px}#slots .m{grid-column:1/-1}#slots .pill span{text-align:center;padding:11px 8px}
