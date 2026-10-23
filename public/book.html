@@ -6,10 +6,11 @@
 <label>Your name<input name="client" required autocomplete="name"></label>
 <label>Phone<input name="phone" type="tel" required autocomplete="tel"></label>
 <div class="two"><label>Preferred date<input name="date" type="date" id="d" required></label><div><b style="font-size:13px">Available times</b><div id="slots" class="pills" style="margin-top:8px"><span class="m">Pick a date first.</span></div></div><label>Address (for delivery or installation)<input name="address" autocomplete="street-address"></label></div>
-<label>Notes (optional)<input name="notes"></label>
+<label>Notes (optional)<input name="notes"></label><label>Photo (optional, helpful for repairs)<input type="file" id="ph" accept="image/*"></label>
 <button class="p" id="b">Request booking</button><div id="msg" role="status" class="err"></div></form>
 <div id="done" hidden><h3>Request received</h3><p id="sum"></p><p class="m">We will contact you to confirm.</p></div></div></div>
 <script>
+const shrink=(f,mx,t='image/jpeg',q=.7)=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>{const r=Math.min(1,mx/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*r;c.height=i.height*r;c.getContext('2d').drawImage(i,0,0,c.width,c.height);ok(c.toDataURL(t,q))};i.onerror=no;i.src=URL.createObjectURL(f)});
 const slug=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 d.min=new Date().toLocaleDateString('en-CA');
@@ -21,16 +22,16 @@ d.onchange=async()=>{slots.textContent='Loading times…';
     slots.innerHTML=out.length?out.map(s=>'<label class="pill"><input type="radio" name="time" value="'+s+'" required><span>'+s+'</span></label>').join(''):'<span class="m">No times available on this day. Please pick another date.</span>'
   }catch{slots.textContent='Could not load times. Please try again.'}};
 fetch('/api/request').then(r=>r.json()).then(x=>{
-  n.textContent='Book with '+x.business_name;document.title=n.textContent;
+  n.textContent='Book with '+x.business_name;if(x.brand)document.documentElement.style.setProperty('--ac',x.brand);if(x.logo){const i=new Image();i.src=x.logo;i.className='logo';i.alt='';n.before(i)}document.title=n.textContent;
   let c=JSON.parse(x.catalog);const q=new URLSearchParams(location.search).get('c'),one=c.filter(k=>slug(k.name)===q);
   if(one.length){c=one;sub.textContent=one[0].name}
   svc.innerHTML=c.map(k=>'<h3>'+esc(k.name)+'</h3><div class="pills">'+k.services.map(s=>'<label class="pill"><input type="radio" name="service" value="'+esc(s)+'" required><span>'+esc(s)+'</span></label>').join('')+'</div>').join('');
 }).catch(()=>{svc.textContent='Could not load services. Please refresh.'});
 f.onsubmit=async ev=>{ev.preventDefault();b.disabled=true;msg.className='m';msg.textContent='Sending…';
-  try{const v=Object.fromEntries(new FormData(f));
+  try{const v=Object.fromEntries(new FormData(f));if(ph.files[0])v.photo=await shrink(ph.files[0],900);
     const r=await fetch('/api/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(v)});
     const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Server error '+r.status);
-    sum.textContent=v.service+' on '+v.date+' at '+v.time;f.hidden=true;done.hidden=false;
+    sum.textContent=v.service+' on '+v.date+' at '+v.time+'. ';const a=document.createElement('a');a.href='/manage.html?t='+j.token;a.textContent='Change or cancel this booking';sum.append(a);f.hidden=true;done.hidden=false;
   }catch(x){msg.className='err';msg.textContent=x.message||'Could not reach the server. Check your connection and try again.'}
   finally{b.disabled=false}};
 </script></body></html>

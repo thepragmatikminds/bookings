@@ -18,3 +18,4 @@ Installable web app (PWA) for phone and laptop. Cloudflare Worker (static assets
 
 ## Updating an existing database
 Run `migrate-1.sql` once in the D1 console (adds address and price columns) BEFORE deploying this version.
+Also run `migrate-2.sql` once (adds assigned-to and photo columns) before deploying this version.
