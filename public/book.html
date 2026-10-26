@@ -6,7 +6,7 @@
 <label>Service<select name="service" id="sv" required disabled><option value="">Choose a group first</option></select></label>
 <input name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0"><label>Your name<input name="client" required autocomplete="name"></label>
 <label>Phone<input name="phone" type="tel" required autocomplete="tel"></label>
-<label>Preferred date<input name="date" type="date" id="d" required></label><div><div style="display:flex;flex-direction:column;gap:6px"><b style="font-size:13px">Available times</b><div id="slots"><span class="m">Pick a date first.</span></div></div><label>Address (for delivery or installation)<input name="address" autocomplete="street-address"></label>
+<label>Preferred date (tap to choose)<input name="date" type="date" id="d" required></label><div style="display:flex;flex-direction:column;gap:6px"><b style="font-size:13px">Available times</b><div id="slots"><span class="m">Pick a date first.</span></div></div><label>Address (for delivery or installation)<input name="address" autocomplete="street-address"></label>
 <label>Notes (optional)<input name="notes"></label><label>Photo (optional, helpful for repairs)<input type="file" id="ph" accept="image/*"></label>
 <button class="p" id="b">Request booking</button><div id="msg" role="status" class="err"></div></form>
 <div id="done" hidden><h3>Request received</h3><p id="sum"></p><p class="m">We will contact you to confirm.</p></div></div></div>
