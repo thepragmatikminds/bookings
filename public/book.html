@@ -4,6 +4,7 @@
 <div class="hero"><small>Appointments</small><h1 id="n">Book an appointment</h1><p id="sub">Choose a service and send your request. We will confirm shortly.</p></div>
 <div class="wrap"><div class="card"><form id="f"><label id="catl">Service group<select id="cat" required><option value="">Loading…</option></select></label>
 <label>Service<select name="service" id="sv" required disabled><option value="">Choose a group first</option></select></label>
+<div style="display:flex;flex-direction:column;gap:8px"><label>Item(s) (optional)<input name="items" id="it" placeholder="e.g. bed, 4 chairs, stools" autocomplete="off"></label><div id="itemchips"></div></div>
 <input name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0"><label>Your name<input name="client" required autocomplete="name"></label>
 <label>Phone<input name="phone" type="tel" required autocomplete="tel"></label>
 <label>Preferred date (tap to choose)<input name="date" type="date" id="d" required></label><div style="display:flex;flex-direction:column;gap:6px"><b style="font-size:13px">Available times</b><div id="slots"><span class="m">Pick a date first.</span></div></div><label>Address (for delivery or installation)<input name="address" autocomplete="street-address"></label>
@@ -13,6 +14,7 @@
 <script>
 let X={};
 const SRC=new URLSearchParams(location.search).get('c')||'general';
+itemchips.onclick=ev=>{const k=ev.target.closest('.ic');if(!k)return;const v=it.value.split(',').map(s=>s.trim()).filter(Boolean);if(!v.includes(k.textContent))v.push(k.textContent);it.value=v.join(', ')};
 const shrink=(f,mx,t='image/jpeg',q=.7)=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>{const r=Math.min(1,mx/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*r;c.height=i.height*r;c.getContext('2d').drawImage(i,0,0,c.width,c.height);ok(c.toDataURL(t,q))};i.onerror=no;i.src=URL.createObjectURL(f)});
 const slug=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -26,7 +28,7 @@ d.onchange=async()=>{slots.textContent='Loading times…';
   ;const wb=document.getElementById('wl');if(wb)wb.onclick=join
   }catch{slots.textContent='Could not load times. Please try again.'}};
 fetch('/api/request?v='+encodeURIComponent(SRC)).then(r=>r.json()).then(x=>{
-  n.textContent='Book with '+x.business_name;X=x;if(x.brand)document.documentElement.style.setProperty('--ac',x.brand);if(x.logo){const i=new Image();i.src=x.logo;i.className='logo';i.alt='';n.before(i)}document.title=n.textContent;
+  n.textContent='Book with '+x.business_name;X=x;itemchips.innerHTML=(x.items||'').split(',').map(s=>s.trim()).filter(Boolean).map(s=>'<button type="button" class="ic">'+esc(s)+'</button>').join('');if(x.brand)document.documentElement.style.setProperty('--ac',x.brand);if(x.logo){const i=new Image();i.src=x.logo;i.className='logo';i.alt='';n.before(i)}document.title=n.textContent;
   let c=JSON.parse(x.catalog);const q=new URLSearchParams(location.search).get('c'),one=c.filter(k=>slug(k.name)===q);
   if(one.length){c=one;sub.textContent=one[0].name}
   cat.innerHTML='<option value="">Choose a service group</option>'+c.map((k,i)=>'<option value="'+i+'">'+esc(k.name)+'</option>').join('');
@@ -40,7 +42,7 @@ f.onsubmit=async ev=>{ev.preventDefault();b.disabled=true;msg.className='m';msg.
   try{const v=Object.fromEntries(new FormData(f));v.source=SRC;if(ph.files[0])v.photo=await shrink(ph.files[0],900);
     const r=await fetch('/api/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(v)});
     const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Server error '+r.status);
-    sum.textContent='Your reference number is #'+j.id+'. '+v.service+' on '+v.date+' at '+v.time+'. ';const a=document.createElement('a');a.href='/manage.html?t='+j.token;a.textContent='Track, change or cancel your booking';sum.append(a);if(X.payinfo){const p=document.createElement('p');p.style.whiteSpace='pre-line';p.textContent='To pay a deposit, send it to:\n'+X.payinfo;done.append(p)}f.hidden=true;done.hidden=false;
+    sum.textContent='Your reference number is #'+j.id+'. '+v.service+(v.items?' ('+v.items+')':'')+' on '+v.date+' at '+v.time+'. ';const a=document.createElement('a');a.href='/manage.html?t='+j.token;a.textContent='Track, change or cancel your booking';sum.append(a);if(X.payinfo){const p=document.createElement('p');p.style.whiteSpace='pre-line';p.textContent='To pay a deposit, send it to:\n'+X.payinfo;done.append(p)}f.hidden=true;done.hidden=false;
   }catch(x){msg.className='err';msg.textContent=x.message||'Could not reach the server. Check your connection and try again.'}
   finally{b.disabled=false}};
 </script></body></html>

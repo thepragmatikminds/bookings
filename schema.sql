@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS bookings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client TEXT NOT NULL, phone TEXT DEFAULT '', service TEXT NOT NULL,
-  date TEXT NOT NULL, time TEXT NOT NULL, notes TEXT DEFAULT '', address TEXT DEFAULT '', assigned TEXT DEFAULT '', photo TEXT DEFAULT '', stage TEXT DEFAULT '', deleted_at TEXT DEFAULT '', price REAL DEFAULT 0, paid REAL DEFAULT 0, source TEXT DEFAULT '', confirmed_at TEXT DEFAULT '', amount TEXT DEFAULT '',
+  date TEXT NOT NULL, time TEXT NOT NULL, notes TEXT DEFAULT '', address TEXT DEFAULT '', assigned TEXT DEFAULT '', photo TEXT DEFAULT '', stage TEXT DEFAULT '', items TEXT DEFAULT '', deleted_at TEXT DEFAULT '', price REAL DEFAULT 0, paid REAL DEFAULT 0, source TEXT DEFAULT '', confirmed_at TEXT DEFAULT '', amount TEXT DEFAULT '',
   status TEXT NOT NULL DEFAULT 'pending',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
