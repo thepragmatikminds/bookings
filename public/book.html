@@ -8,7 +8,7 @@
 <label>Phone<input name="phone" type="tel" required autocomplete="tel"></label>
 <label>Preferred date (tap to choose)<input name="date" type="date" id="d" required></label><div style="display:flex;flex-direction:column;gap:6px"><b style="font-size:13px">Available times</b><div id="slots"><span class="m">Pick a date first.</span></div></div><label>Address (for delivery or installation)<input name="address" autocomplete="street-address"></label>
 <label>Notes (optional)<input name="notes"></label><label>Photo (optional, helpful for repairs)<input type="file" id="ph" accept="image/*"></label>
-<button class="p" id="b">Request booking</button><div id="msg" role="status" class="err"></div></form>
+<button class="p" id="b">Request booking</button><div id="msg" role="status" class="err"></div></form><p class="m" style="text-align:center;margin:16px 0 0"><a href="/track.html">Already booked? Track your booking</a></p>
 <div id="done" hidden><h3>Request received</h3><p id="sum"></p><p class="m">We will contact you to confirm.</p></div></div></div>
 <script>
 let X={};
@@ -40,7 +40,7 @@ f.onsubmit=async ev=>{ev.preventDefault();b.disabled=true;msg.className='m';msg.
   try{const v=Object.fromEntries(new FormData(f));v.source=SRC;if(ph.files[0])v.photo=await shrink(ph.files[0],900);
     const r=await fetch('/api/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(v)});
     const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Server error '+r.status);
-    sum.textContent=v.service+' on '+v.date+' at '+v.time+'. ';const a=document.createElement('a');a.href='/manage.html?t='+j.token;a.textContent='Change or cancel this booking';sum.append(a);if(X.payinfo){const p=document.createElement('p');p.style.whiteSpace='pre-line';p.textContent='To pay a deposit, send it to:\n'+X.payinfo;done.append(p)}f.hidden=true;done.hidden=false;
+    sum.textContent='Your reference number is #'+j.id+'. '+v.service+' on '+v.date+' at '+v.time+'. ';const a=document.createElement('a');a.href='/manage.html?t='+j.token;a.textContent='Track, change or cancel your booking';sum.append(a);if(X.payinfo){const p=document.createElement('p');p.style.whiteSpace='pre-line';p.textContent='To pay a deposit, send it to:\n'+X.payinfo;done.append(p)}f.hidden=true;done.hidden=false;
   }catch(x){msg.className='err';msg.textContent=x.message||'Could not reach the server. Check your connection and try again.'}
   finally{b.disabled=false}};
 </script></body></html>

@@ -19,6 +19,7 @@ async function limit(db, key, max, secs, peek) {
   return false;
 }
 const note = (db, who, action) => db.prepare('INSERT INTO log (who,action) VALUES (?,?)').bind(who, String(action).slice(0, 200)).run().catch(() => {});
+const ev = (db, id, label) => db.prepare('INSERT INTO events (booking_id,label) VALUES (?,?)').bind(id, String(label).slice(0, 200)).run().catch(() => {});
 const STATUSES = ['pending', 'confirmed', 'ready', 'done', 'noshow', 'cancelled'];
 
 const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -43,7 +44,7 @@ function waPhone(p, cc) {
 }
 const mergedMsgs = s => { let o = {}; try { o = JSON.parse(s.messages || '{}'); } catch {} return Object.fromEntries(Object.keys(MSGS).map(k => [k, { ...MSGS[k], ...(o[k] || {}) }])); };
 const reminder = (b, s, link = '') => `Hello ${b.client}, a reminder that your ${b.service} with ${s.business_name} is tomorrow at ${b.time}. To reschedule or cancel: ${link}`;
-const stagemsg = (b, s) => `Hello ${b.client}, an update on your ${b.service} from ${s.business_name}: it is now at the "${b.stage}" stage.`;
+const stagemsg = (b, s, link = '') => `Hello ${b.client}, an update on your ${b.service} from ${s.business_name}: it is now at the "${b.stage}" stage. Track your order: ${link}`;
 const followup = (b, s) => `Hello ${b.client}, it has been a while since your ${b.service} with ${s.business_name}. Is there anything we can help with, such as a new piece, a repair or a design consultation?`;
 function message(b, s, link = '') {
   let cat; try { cat = JSON.parse(s.catalog).find(c => c.services.includes(b.service)); } catch {}
@@ -111,6 +112,7 @@ async function insert(env, b, status, after) {
   const r = await db.prepare('INSERT INTO bookings (client,phone,service,date,time,notes,address,amount,assigned,photo,price,paid,source,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
     .bind(v.client, v.phone, v.service, v.date, v.time, v.notes, v.address, v.amount, v.assigned, photo, status === 'pending' ? 0 : Math.max(0, +b.price || 0), status === 'pending' ? 0 : Math.max(0, +b.paid || 0), v.source, status).run();
   if (after) after();
+  await ev(db, r.meta.last_row_id, status === 'pending' ? 'Booking requested' : 'Booking added by our team');
   return json({ id: r.meta.last_row_id, token: await tok(env, r.meta.last_row_id) }, 201);
 }
 
@@ -142,19 +144,28 @@ async function handle({ request, env, ctx, params }) {
     }
   }
 
+  // Public: a client finds their private tracking link with a reference number and phone number
+  if (res === 'track' && m === 'POST') {
+    if (await limit(db, 'trk:' + (request.headers.get('cf-connecting-ip') || 'x'), 10, 3600)) return json({ error: 'Too many attempts. Please try again later.' }, 429);
+    const r = await db.prepare("SELECT id,phone FROM bookings WHERE id=? AND status!='deleted'").bind(parseInt(String(body.ref).replace(/\D/g, '')) || 0).first();
+    const dg = x => String(x || '').replace(/\D/g, '').slice(-9);
+    if (!r || dg(r.phone).length < 7 || dg(r.phone) !== dg(body.phone)) return json({ error: 'We could not find a booking with those details.' }, 404);
+    return json({ token: await tok(env, r.id) });
+  }
+
   // Public: clients change or cancel their own booking through a private link
   if (res === 'manage') {
     const bid = await untok(env, m === 'GET' ? new URL(request.url).searchParams.get('t') : body.t);
-    const b = bid && await db.prepare('SELECT client,service,date,time,status,address,stage,price,paid FROM bookings WHERE id=?').bind(bid).first();
+    const b = bid && await db.prepare('SELECT client,service,date,time,status,address,stage,price,paid,created_at FROM bookings WHERE id=?').bind(bid).first();
     if (!b) return json({ error: 'This link is not valid.' }, 404);
     const s = await settings(db), note = () => ctx.waitUntil(pushAll(env, new URL(request.url).origin));
-    if (m === 'GET') return json({ ...b, business_name: s.business_name, brand: s.brand, payinfo: s.payinfo, showroom: s.showroom });
-    if (body.action === 'cancel') { await db.prepare("UPDATE bookings SET status='cancelled' WHERE id=?").bind(bid).run(); note(); return json({ ok: true }); }
+    if (m === 'GET') return json({ ...b, events: (await db.prepare('SELECT ts,label FROM events WHERE booking_id=? ORDER BY id DESC').bind(bid).all()).results, business_name: s.business_name, brand: s.brand, payinfo: s.payinfo, showroom: s.showroom });
+    if (body.action === 'cancel') { await db.prepare("UPDATE bookings SET status='cancelled' WHERE id=?").bind(bid).run(); await ev(db, bid, 'Cancelled by you'); note(); return json({ ok: true }); }
     if (body.action === 'move') {
       const h = JSON.parse(s.hours), dow = new Date(body.date + 'T00:00:00Z').getUTCDay();
       if (!/^\d{4}-\d\d-\d\d$/.test(body.date) || !/^\d\d:\d\d$/.test(body.time) || !h.days.includes(dow) || body.time < h.open || body.time > h.close) return json({ error: 'We are closed at that time. Please pick another.' }, 400);
       if (await db.prepare("SELECT id FROM bookings WHERE date=? AND time=? AND status NOT IN ('cancelled','deleted') AND id!=?").bind(body.date, body.time, bid).first()) return json({ error: 'That time slot is already taken.' }, 409);
-      await db.prepare("UPDATE bookings SET date=?,time=?,status='pending' WHERE id=?").bind(body.date, body.time, bid).run(); note();
+      await db.prepare("UPDATE bookings SET date=?,time=?,status='pending' WHERE id=?").bind(body.date, body.time, bid).run(); await ev(db, bid, 'Rescheduled by you to ' + body.date + ' at ' + body.time); note();
       return json({ ok: true });
     }
     return json({ error: 'Not found' }, 404);
@@ -212,7 +223,7 @@ async function handle({ request, env, ctx, params }) {
       const { results } = await db.prepare(`SELECT ${COLS} FROM bookings WHERE date>=? AND status!='deleted' ORDER BY date,time`).bind(from).all();
       const s = await settings(db), cc = String(s.country_code).replace(/\D/g, '') || '265';
       const origin = new URL(request.url).origin;
-      return json(await Promise.all(results.map(async b => { const link = origin + '/manage.html?t=' + await tok(env, b.id); return { ...b, wa: waPhone(b.phone, cc), msg: message(b, s, link), rem: reminder(b, s, link), fu: followup(b, s), stg: b.stage ? stagemsg(b, s) : '' }; })));
+      return json(await Promise.all(results.map(async b => { const link = origin + '/manage.html?t=' + await tok(env, b.id); return { ...b, wa: waPhone(b.phone, cc), msg: message(b, s, link), rem: reminder(b, s, link), fu: followup(b, s), stg: b.stage ? stagemsg(b, s, link) : '' }; })));
     }
     if (m === 'POST') { await note(db, me, 'Added booking for ' + String(body.client || '').slice(0, 40)); return insert(env, body, 'confirmed'); }
     if (m === 'PATCH' && id) {
@@ -224,8 +235,13 @@ async function handle({ request, env, ctx, params }) {
       if (['confirmed', 'ready', 'done'].includes(body.status)) sets.push("confirmed_at=COALESCE(NULLIF(confirmed_at,''),CURRENT_TIMESTAMP)");
       if (!sets.length) return json({ error: 'Nothing to update' }, 400);
       if (body.date && body.time && await db.prepare("SELECT id FROM bookings WHERE date=? AND time=? AND status NOT IN ('cancelled','deleted') AND id!=?").bind(body.date, body.time, id).first()) return json({ error: 'That time slot is already taken.' }, 409);
+      const prev = await db.prepare('SELECT status,stage,date,time FROM bookings WHERE id=?').bind(id).first() || {};
       await db.prepare(`UPDATE bookings SET ${sets.join(',')} WHERE id=?`).bind(...vals, id).run();
       await note(db, me, 'Edited booking #' + id + ' (' + Object.keys(body).join(', ') + ')');
+      const SL = { confirmed: 'Booking confirmed', ready: 'Your order is ready', done: 'Completed', cancelled: 'Booking cancelled' };
+      if (body.status && body.status !== prev.status && SL[body.status]) await ev(db, id, SL[body.status]);
+      if (body.stage && body.stage !== prev.stage) await ev(db, id, 'Now at stage: ' + body.stage);
+      if ((body.date && body.date !== prev.date) || (body.time && body.time !== prev.time)) await ev(db, id, 'Rescheduled to ' + (body.date || prev.date) + ' at ' + (body.time || prev.time));
       return json({ ok: true });
     }
     if (m === 'DELETE' && id) { await db.prepare("UPDATE bookings SET status='deleted',deleted_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run(); await note(db, me, 'Deleted booking #' + id); return json({ ok: true }); }

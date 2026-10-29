@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Track your booking</title><link rel="stylesheet" href="/style.css"><link rel="icon" href="/icon.svg"></head><body>
+<div class="hero"><small>Booking progress</small><h1 id="n">Track your booking</h1><p>Enter your reference number and the phone number you booked with.</p></div>
+<div class="wrap"><div class="card"><form id="f">
+<label>Reference number<input name="ref" inputmode="numeric" placeholder="For example 12" required></label>
+<label>Phone number<input name="phone" type="tel" required autocomplete="tel"></label>
+<button class="p" id="b">Find my booking</button><div id="msg" role="status" class="err"></div></form></div></div>
+<script>
+fetch('/api/request').then(r=>r.json()).then(x=>{n.textContent='Track your booking with '+x.business_name;document.title=n.textContent;if(x.brand)document.documentElement.style.setProperty('--ac',x.brand)}).catch(()=>{});
+f.onsubmit=async ev=>{ev.preventDefault();b.disabled=true;msg.className='m';msg.textContent='Looking…';
+ try{const r=await fetch('/api/track',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(f)))});const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||'Server error '+r.status);location.href='/manage.html?t='+encodeURIComponent(j.token)}
+ catch(x){msg.className='err';msg.textContent=x.message}finally{b.disabled=false}};
+</script></body></html>
