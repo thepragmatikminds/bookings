@@ -53,9 +53,9 @@ main{min-width:0}
 <body>
 <main id="app" aria-live="polite">Loading…</main>
 <nav aria-label="Main"><div class="brand" id="brand"></div><button data-v="today" class="on"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Overview</span></button><button data-v="all"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg><span>Bookings</span></button><button data-v="new"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg><span>New</span></button><button data-v="share"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/></svg><span>Share</span></button><button data-v="settings"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span>Settings</span></button></nav>
-<script src="/qr.js"></script>
+<script src="/qr.js" defer></script>
 <script>
-let pin=localStorage.pin||'',S={business_name:"Nthawi's Furniture",catalog:'[]',hours:'{}',messages:'{}'},B=[],view='today',flt='all',q='',E=null,L=[],CL=[],V=[],W=[],ip=90,sub='list',cm=new Date(new Date().getFullYear(),new Date().getMonth(),1),cd='';
+let LAST='',pin=localStorage.pin||'',S={business_name:"Nthawi's Furniture",catalog:'[]',hours:'{}',messages:'{}'},B=[],view='today',flt='all',q='',E=null,L=[],CL=[],V=[],W=[],ip=90,sub='list',cm=new Date(new Date().getFullYear(),new Date().getMonth(),1),cd='';
 const $=s=>document.querySelector(s);
 const e=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const iso=d=>d.toLocaleDateString('en-CA'),today=()=>iso(new Date()),tomorrow=()=>iso(new Date(Date.now()+864e5));
@@ -66,7 +66,12 @@ const hrs=()=>{try{return JSON.parse(S.hours)}catch{return{open:'08:00',close:'1
 async function api(p,o={}){const r=await fetch('/api/'+p,{...o,headers:{'content-type':'application/json','x-pin':pin}});
   if(r.status===401){pin=prompt('Enter the app PIN')||'';if(!pin)throw new Error('PIN required');localStorage.pin=pin;return api(p,o)}
   const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Server error '+r.status);return d}
-async function load(){S=await api('settings');document.documentElement.style.setProperty('--ac',S.brand||'#0F766E');document.querySelector('[data-v=settings]').style.display=S.owner?'':'none';B=await api('bookings?from='+iso(new Date(Date.now()-365*864e5)));try{V=S.owner?await api('visits?from='+iso(new Date(Date.now()-365*864e5))):[]}catch{V=[]}try{W=await api('waitlist')}catch{W=[]}render()}
+function paint(){document.documentElement.style.setProperty('--ac',S.brand||'#0F766E');document.querySelector('[data-v=settings]').style.display=S.owner?'':'none'}
+async function load(silent){const yr=iso(new Date(Date.now()-365*864e5)),s=await api('settings');
+  const [b,w,v]=await Promise.all([api('bookings?from='+yr),api('waitlist').catch(()=>[]),s.owner?api('visits?from='+yr).catch(()=>[]):[]]);
+  const snap=JSON.stringify([s,b,w,v]),changed=snap!==LAST;S=s;B=b;W=w;V=v;paint();
+  if(changed){LAST=snap;try{localStorage.cache=snap}catch{}}
+  if(!silent||changed)render()}
 function go(v){view=v;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));render();scrollTo(0,0)}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
 
@@ -110,7 +115,7 @@ function render(){
 <small>pre = Pre-Purchase, delivery = Delivery, post = Post-Purchase, generic = anything else. You can use {name} {service} {date} {time} {business}.</small><button class="p">Save settings</button></form>
 <h3>Notifications</h3><p class="m">Get an alert on this phone when a client requests a booking. On iPhone, add the app to your Home Screen first and open it from there.</p><div class="r2"><button class="bt" onclick="enablePush()">Turn on</button><button class="bt o" onclick="testPush()">Send test</button></div>
 <h3>Recently deleted</h3><div id="dl"><button class="bt o" onclick="loadDel()">Show deleted bookings</button></div><h3>Activity log</h3><div id="lg2"><button class="bt o" onclick="loadLog()">Show recent activity</button></div>
-<div class="r2" style="margin-top:14px"><button class="bt o" onclick="exp()">Download bookings (CSV)</button><button class="bt o" onclick="pin='';localStorage.pin='';location.reload()">Forget PIN</button></div></div>`}
+<div class="r2" style="margin-top:14px"><button class="bt o" onclick="exp()">Download bookings (CSV)</button><button class="bt o" onclick="pin='';localStorage.pin='';localStorage.removeItem('cache');location.reload()">Forget PIN</button></div></div>`}
   $('#app').innerHTML=h+'</div>'}
 const shrink=(f,mx,t='image/jpeg',q=.7)=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>{const r=Math.min(1,mx/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*r;c.height=i.height*r;c.getContext('2d').drawImage(i,0,0,c.width,c.height);ok(c.toDataURL(t,q))};i.onerror=no;i.src=URL.createObjectURL(f)});
 async function photo(id){try{const r=await api('photo/'+id),d=document.createElement('div');d.className='lb';d.onclick=()=>d.remove();d.innerHTML='<img alt="Photo from client" src="'+r.photo+'">';document.body.append(d)}catch(x){alert(x.message)}}
@@ -180,6 +185,9 @@ async function enablePush(){try{if(!('PushManager'in window))return alert('Add t
  const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:u8(key)});
  await api('push/subscribe',{method:'POST',body:JSON.stringify(sub)});toast('Notifications are on for this phone')}catch(x){alert(x.message)}}
 async function testPush(){try{const r=await api('push/test',{method:'POST',body:'{}'});toast(r.sent?'Test sent. Check your notifications.':'No phone is subscribed yet. Tap Turn on first.')}catch(x){alert(x.message)}}
-load().catch(x=>{$('#app').innerHTML='<div class="wrap"><div class="card err">'+e(x.message)+'</div></div>'});
-if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js');
+try{const c=JSON.parse(localStorage.cache);[S,B,W,V]=c;LAST=localStorage.cache;paint();render()}catch{}
+load(true).catch(x=>{if(!B.length)$('#app').innerHTML='<div class="wrap"><div class="card err">'+e(x.message)+'</div></div>'});
+const tick=()=>{if(document.hidden||/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)||document.querySelector('.lb'))return;if(view==='today'||view==='all')load(true).catch(()=>{})};
+setInterval(tick,15000);document.addEventListener('visibilitychange',tick);
+if('serviceWorker'in navigator){if(navigator.serviceWorker.controller)navigator.serviceWorker.addEventListener('message',()=>toast('A new version is ready. Reload to update.'));navigator.serviceWorker.register('/sw.js')}
 </script></body></html>

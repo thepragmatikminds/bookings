@@ -175,7 +175,7 @@ async function handle({ request, env, ctx, params }) {
 
   // Everything else needs a PIN: the owner PIN (APP_PIN) or a team member's PIN
   const pinH = request.headers.get('x-pin') || '';
-  const team = JSON.parse((await settings(db)).team || '[]');
+  const s0 = await settings(db), team = JSON.parse(s0.team || '[]');
   const ip = request.headers.get('cf-connecting-ip') || 'x';
   if (await limit(db, 'pin:' + ip, 8, 900, true)) return json({ error: 'Too many wrong PINs. Try again in 15 minutes.' }, 429);
   const owner = !!env.APP_PIN && pinH === env.APP_PIN, mate = owner ? null : team.find(x => x.pin && x.pin === pinH);
@@ -223,7 +223,7 @@ async function handle({ request, env, ctx, params }) {
     if (m === 'GET') {
       const from = new URL(request.url).searchParams.get('from') || '0000-00-00';
       const { results } = await db.prepare(`SELECT ${COLS} FROM bookings WHERE date>=? AND status!='deleted' ORDER BY date,time`).bind(from).all();
-      const s = await settings(db), cc = String(s.country_code).replace(/\D/g, '') || '265';
+      const s = s0, cc = String(s.country_code).replace(/\D/g, '') || '265';
       const origin = new URL(request.url).origin;
       return json(await Promise.all(results.map(async b => { const link = origin + '/manage.html?t=' + await tok(env, b.id); return { ...b, wa: waPhone(b.phone, cc), msg: message(b, s, link), rem: reminder(b, s, link), fu: followup(b, s), stg: b.stage ? stagemsg(b, s, link) : '' }; })));
     }
