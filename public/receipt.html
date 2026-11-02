@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Payment receipt</title><link rel="stylesheet" href="/style.css"><link rel="icon" href="/icon.svg"></head><body>
+<div class="hero"><small>Payment receipt</small><h1 id="n">Receipt</h1></div>
+<div class="wrap"><div class="card" id="c">Loading…</div></div>
+<script>
+const q=new URLSearchParams(location.search),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const JS={},jl=src=>JS[src]||(JS[src]=new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>{delete JS[src];no(new Error('Could not load the PDF tool. Check your connection.'))};document.head.append(s)}));
+fetch('/api/receipt?t='+encodeURIComponent(q.get('t')||'')+'&p='+encodeURIComponent(q.get('p')||'')).then(async r=>{const j=await r.json();if(!r.ok)throw new Error(j.error);
+ if(j.brand)document.documentElement.style.setProperty('--ac',j.brand);n.textContent=j.business_name;document.title='Receipt - '+j.business_name;
+ const fm=v=>j.currency+' '+Number(v||0).toLocaleString('en-US',{maximumFractionDigits:2}),no='R-'+String(j.pid).padStart(4,'0');
+ c.innerHTML='<h3 style="margin-top:0">Receipt '+no+'</h3><p>Received from <b>'+esc(j.client)+'</b><br>For '+esc(j.service)+(j.items?' ('+esc(j.items)+')':'')+'</p><p style="font-size:22px"><b>'+esc(fm(j.amount))+'</b> received</p>'+(j.price>0?'<p>Total price: '+esc(fm(j.price))+'<br>Paid to date: '+esc(fm(j.paid_to))+'<br>Balance: <b>'+esc(fm(Math.max(0,j.price-j.paid_to)))+'</b></p>':'')+'<button class="p" id="dl" style="width:100%">Download PDF receipt</button><div id="m" role="status" class="err"></div>';
+ dl.onclick=async()=>{m.textContent='';try{await jl('/jspdf.min.js');await jl('/receipt.js');const d=await makeReceipt({name:j.business_name,showroom:j.showroom||'',currency:j.currency||'MWK',logo:j.logo||'',client:j.client,service:j.service,items:j.items,amount:j.amount,price:j.price,paidTo:j.paid_to,ts:j.ts,no});d.save('Receipt-'+no+'.pdf')}catch(x){m.textContent=x.message}}
+}).catch(x=>{c.textContent=x.message||'This receipt link is not valid.'});
+</script></body></html>

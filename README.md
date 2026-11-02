@@ -24,3 +24,5 @@ Also run `migrate-4.sql` once (soft delete, activity log, waiting list, spam lim
 Backups: D1 keeps 30 days of point-in-time restore (Time Travel). For weekly file backups, connect an R2 bucket as described in `wrangler.toml`.
 Also run `migrate-5.sql` once (booking progress history for the client tracking page).
 Also run `migrate-6.sql` once (adds the item names column).
+Also run `migrate-7.sql` once (adds the expected delivery date column).
+Also run `migrate-8.sql` once (proof of payment uploads).

@@ -3,7 +3,7 @@
 <title>Book an appointment</title><link rel="stylesheet" href="/style.css"><link rel="icon" href="/icon.svg"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta name="apple-mobile-web-app-title" content="Book Nthawi's"><meta name="theme-color" content="#0F766E"></head><body>
 <div class="hero"><small>Appointments</small><h1 id="n">Book an appointment</h1><p id="sub">Choose a service and send your request. We will confirm shortly.</p></div>
 <div class="wrap"><div class="card"><form id="f"><label id="catl">Service group<select id="cat" required><option value="">Loading…</option></select></label>
-<label>Service<select name="service" id="sv" required disabled><option value="">Choose a group first</option></select></label>
+<label>Service<select name="service" id="sv" required disabled><option value="">Choose a group first</option></select></label><small id="lead" class="m"></small>
 <div style="display:flex;flex-direction:column;gap:8px"><label>Item(s) (optional)<input name="items" id="it" placeholder="e.g. bed, 4 chairs, stools" autocomplete="off"></label><div id="itemchips"></div></div>
 <input name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0"><label>Your name<input name="client" required autocomplete="name"></label>
 <label>Phone<input name="phone" type="tel" required autocomplete="tel"></label>
@@ -15,6 +15,8 @@
 let X={};
 const SRC=new URLSearchParams(location.search).get('c')||'general';
 itemchips.onclick=ev=>{const k=ev.target.closest('.ic');if(!k)return;const v=it.value.split(',').map(s=>s.trim()).filter(Boolean);if(!v.includes(k.textContent))v.push(k.textContent);it.value=v.join(', ')};
+const leadFor=(t,s)=>{for(const l of String(t||'').split('\n')){const i=l.lastIndexOf(':');if(i>0&&l.slice(0,i).trim().toLowerCase()===String(s).toLowerCase())return parseInt(l.slice(i+1))||0}return 0};
+sv.addEventListener('change',()=>{const d=leadFor(X.leadtimes,sv.value);lead.textContent=d?'Typical time frame: about '+d+' days from your booking date.':''});
 const shrink=(f,mx,t='image/jpeg',q=.7)=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>{const r=Math.min(1,mx/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*r;c.height=i.height*r;c.getContext('2d').drawImage(i,0,0,c.width,c.height);ok(c.toDataURL(t,q))};i.onerror=no;i.src=URL.createObjectURL(f)});
 const slug=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -42,7 +44,7 @@ f.onsubmit=async ev=>{ev.preventDefault();b.disabled=true;msg.className='m';msg.
   try{const v=Object.fromEntries(new FormData(f));v.source=SRC;if(ph.files[0])v.photo=await shrink(ph.files[0],900);
     const r=await fetch('/api/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(v)});
     const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Server error '+r.status);
-    sum.textContent='Your reference number is #'+j.id+'. '+v.service+(v.items?' ('+v.items+')':'')+' on '+v.date+' at '+v.time+'. ';const a=document.createElement('a');a.href='/manage.html?t='+j.token;a.textContent='Track, change or cancel your booking';sum.append(a);if(X.payinfo){const p=document.createElement('p');p.style.whiteSpace='pre-line';p.textContent='To pay a deposit, send it to:\n'+X.payinfo;done.append(p)}f.hidden=true;done.hidden=false;
+    sum.textContent='Your reference number is #'+j.id+'. '+v.service+(v.items?' ('+v.items+')':'')+' on '+v.date+' at '+v.time+'. ';const a=document.createElement('a');a.href='/manage.html?t='+j.token;a.textContent='Track, change or cancel your booking';sum.append(a);if(X.payinfo){const p=document.createElement('p');p.style.whiteSpace='pre-line';p.textContent='To pay a deposit, send it to:\n'+X.payinfo+'\n\nAfter paying, open your tracking page above and upload a photo of your proof of payment.';done.append(p)}f.hidden=true;done.hidden=false;
   }catch(x){msg.className='err';msg.textContent=x.message||'Could not reach the server. Check your connection and try again.'}
   finally{b.disabled=false}};
 </script></body></html>

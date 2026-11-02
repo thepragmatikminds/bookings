@@ -1,5 +1,5 @@
-const C = 'v13';
-const SHELL = ['/', '/book.html', '/manage.html', '/track.html', '/style.css', '/qr.js', '/manifest.webmanifest', '/icon.svg', '/apple-touch-icon.png'];
+const C = 'v17';
+const SHELL = ['/', '/book.html', '/manage.html', '/track.html', '/receipt.html', '/style.css', '/qr.js', '/manifest.webmanifest', '/icon.svg', '/apple-touch-icon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(SHELL)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k))))
@@ -16,5 +16,5 @@ self.addEventListener('fetch', e => {
     return hit || net;
   }));
 });
-self.addEventListener('push', e => e.waitUntil(self.registration.showNotification('New booking request', { body: 'Open the app to review and confirm it.', icon: '/icon-192.png', badge: '/icon-192.png', tag: 'new-booking' })));
+self.addEventListener('push', e => e.waitUntil(self.registration.showNotification('New activity on your bookings', { body: 'A booking request or payment proof is waiting. Open the app to review it.', icon: '/icon-192.png', badge: '/icon-192.png', tag: 'new-booking' })));
 self.addEventListener('notificationclick', e => { e.notification.close(); e.waitUntil(clients.matchAll({ type: 'window' }).then(l => l.length ? l[0].focus() : clients.openWindow('/'))); });

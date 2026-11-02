@@ -1,7 +1,7 @@
 const json = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { 'content-type': 'application/json' } });
 const DEFAULT_CATALOG = JSON.stringify([{name:'Pre-Purchase & Design Services',services:['Showroom visit','Design consultation','Home measurement','Custom furniture quote']},{name:'Delivery & Fulfillment Services',services:['Furniture delivery','Assembly & installation','Showroom collection']},{name:'Post-Purchase & Care Services',services:['Repairs','Warranty claim','Upholstery & polish care','Returns & exchanges']}]);
 const DEFAULT_HOURS = '{"open":"08:00","close":"17:00","days":[1,2,3,4,5,6],"slot":60}';
-const COLS = 'id,client,phone,service,date,time,notes,status,created_at,address,amount,assigned,price,paid,source,confirmed_at,stage,items,(length(photo)>0) AS has_photo';
+const COLS = 'id,client,phone,service,date,time,notes,status,created_at,address,amount,assigned,price,paid,source,confirmed_at,stage,items,due_date,(length(photo)>0) AS has_photo';
 async function tok(env, id) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode('manage:' + (env.APP_PIN || '')), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return id + '.' + b64u(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(String(id)))).slice(0, 22);
@@ -20,6 +20,11 @@ async function limit(db, key, max, secs, peek) {
 }
 const note = (db, who, action) => db.prepare('INSERT INTO log (who,action) VALUES (?,?)').bind(who, String(action).slice(0, 200)).run().catch(() => {});
 const ev = (db, id, label) => db.prepare('INSERT INTO events (booking_id,label) VALUES (?,?)').bind(id, String(label).slice(0, 200)).run().catch(() => {});
+const addDays = (d, n) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+const nice = d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+const leadDays = (txt, svc) => { for (const l of String(txt || '').split('\n')) { const i = l.lastIndexOf(':'); if (i > 0 && l.slice(0, i).trim().toLowerCase() === String(svc).toLowerCase()) return parseInt(l.slice(i + 1)) || 0; } return 0; };
+const money = (s, n) => (s.currency || 'MWK') + ' ' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+async function bpays(db, id) { try { return (await db.prepare('SELECT id,ts,amount,kind,status FROM payments WHERE booking_id=? ORDER BY id DESC').bind(id).all()).results; } catch { return []; } }
 const svc = b => b.service + (b.items ? ' (' + b.items + ')' : '');
 const STATUSES = ['pending', 'confirmed', 'ready', 'done', 'noshow', 'cancelled'];
 
@@ -46,13 +51,16 @@ function waPhone(p, cc) {
 const mergedMsgs = s => { let o = {}; try { o = JSON.parse(s.messages || '{}'); } catch {} return Object.fromEntries(Object.keys(MSGS).map(k => [k, { ...MSGS[k], ...(o[k] || {}) }])); };
 const reminder = (b, s, link = '') => `Hello ${b.client}, a reminder that your ${svc(b)} with ${s.business_name} is tomorrow at ${b.time}. To reschedule or cancel: ${link}`;
 const stagemsg = (b, s, link = '') => `Hello ${b.client}, an update on your ${svc(b)} from ${s.business_name}: it is now at the "${b.stage}" stage. Track your order: ${link}`;
+const etamsg = (b, s, link = '') => { const d = Math.round((Date.parse(b.due_date) - Date.parse(b.date)) / 864e5); return `Hello ${b.client}, your ${svc(b)} from ${s.business_name} will take ${d > 0 ? 'about ' + d + ' days' : 'a short while'}. Expected delivery: ${nice(b.due_date)}. Track the progress here: ${link}`; };
 const followup = (b, s) => `Hello ${b.client}, it has been a while since your ${svc(b)} with ${s.business_name}. Is there anything we can help with, such as a new piece, a repair or a design consultation?`;
 function message(b, s, link = '') {
   let cat; try { cat = JSON.parse(s.catalog).find(c => c.services.includes(b.service)); } catch {}
   const M = mergedMsgs(s), tpl = (M[kind(cat ? cat.name : '')] || {})[b.status] || M.generic[b.status];
   if (!tpl) return '';
   const v = { name: b.client, service: b.service, date: b.date, time: b.time, business: s.business_name, link, item: b.items ? ' (' + b.items + ')' : '' };
-  return tpl.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '');
+  let out = tpl.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '');
+  if (b.status === 'confirmed' && b.due_date) { const x = ' Expected delivery: ' + nice(b.due_date) + '.'; out = out.includes(' To change or cancel:') ? out.replace(' To change or cancel:', x + ' To change or cancel:') : out + x; }
+  return out;
 }
 
 // Push notifications: keys are created automatically on first use and kept in the database.
@@ -102,7 +110,7 @@ async function settings(db) {
 async function insert(env, b, status, after) {
   const db = env.DB;
   const c = s => String(s || '').trim().slice(0, 300);
-  const v = { client: c(b.client), phone: c(b.phone), service: c(b.service), date: c(b.date), time: c(b.time), notes: c(b.notes), address: c(b.address), amount: c(b.amount), assigned: c(b.assigned), items: c(b.items), source: status === 'pending' ? (c(b.source) || 'general') : 'staff' };
+  const v = { client: c(b.client), phone: c(b.phone), service: c(b.service), date: c(b.date), time: c(b.time), notes: c(b.notes), address: c(b.address), amount: c(b.amount), assigned: c(b.assigned), items: c(b.items), due_date: status === 'pending' ? '' : (/^\d{4}-\d\d-\d\d$/.test(b.due_date) ? b.due_date : ''), source: status === 'pending' ? (c(b.source) || 'general') : 'staff' };
   const photo = typeof b.photo === 'string' && b.photo.startsWith('data:image/') && b.photo.length < 400000 ? b.photo : '';
   if (!v.client || !v.service || !/^\d{4}-\d\d-\d\d$/.test(v.date) || !/^\d\d:\d\d$/.test(v.time)) return json({ error: 'Please fill in client, service, date and time.' }, 400);
   if (status === 'pending') {
@@ -111,8 +119,8 @@ async function insert(env, b, status, after) {
   }
   const clash = await db.prepare("SELECT id FROM bookings WHERE date=? AND time=? AND status NOT IN ('cancelled','deleted')").bind(v.date, v.time).first();
   if (clash) return json({ error: 'That time slot is already taken.' }, 409);
-  const r = await db.prepare('INSERT INTO bookings (client,phone,service,date,time,notes,address,amount,assigned,photo,price,paid,source,items,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-    .bind(v.client, v.phone, v.service, v.date, v.time, v.notes, v.address, v.amount, v.assigned, photo, status === 'pending' ? 0 : Math.max(0, +b.price || 0), status === 'pending' ? 0 : Math.max(0, +b.paid || 0), v.source, v.items, status).run();
+  const r = await db.prepare('INSERT INTO bookings (client,phone,service,date,time,notes,address,amount,assigned,photo,price,paid,source,items,due_date,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .bind(v.client, v.phone, v.service, v.date, v.time, v.notes, v.address, v.amount, v.assigned, photo, status === 'pending' ? 0 : Math.max(0, +b.price || 0), status === 'pending' ? 0 : Math.max(0, +b.paid || 0), v.source, v.items, v.due_date, status).run();
   if (after) after();
   await ev(db, r.meta.last_row_id, status === 'pending' ? 'Booking requested' : 'Booking added by our team');
   return json({ id: r.meta.last_row_id, token: await tok(env, r.meta.last_row_id) }, 201);
@@ -129,7 +137,7 @@ async function handle({ request, env, ctx, params }) {
       const s = await settings(db), d = new URL(request.url).searchParams.get('date'), vv = new URL(request.url).searchParams.get('v');
       if (vv) try { await db.prepare('INSERT INTO visits (day,source,n) VALUES (?,?,1) ON CONFLICT(day,source) DO UPDATE SET n=n+1').bind(new Date().toISOString().slice(0, 10), vv.slice(0, 40)).run(); } catch {}
       const taken = d ? (await db.prepare("SELECT time FROM bookings WHERE date=? AND status NOT IN ('cancelled','deleted')").bind(d).all()).results.map(r => r.time) : [];
-      return json({ business_name: s.business_name, catalog: s.catalog, hours: s.hours, brand: s.brand, logo: s.logo, payinfo: s.payinfo, showroom: s.showroom, items: s.items, taken });
+      return json({ business_name: s.business_name, catalog: s.catalog, hours: s.hours, brand: s.brand, logo: s.logo, payinfo: s.payinfo, showroom: s.showroom, currency: s.currency, items: s.items, leadtimes: s.leadtimes, taken });
     }
     if (m === 'POST') {
       if (body.website) return json({ id: 0, token: '' }, 201);
@@ -146,6 +154,16 @@ async function handle({ request, env, ctx, params }) {
     }
   }
 
+  // Public: a client opens a confirmed payment receipt with their private link
+  if (res === 'receipt' && m === 'GET') {
+    const u = new URL(request.url), bid = await untok(env, u.searchParams.get('t'));
+    const p = bid && await db.prepare("SELECT id,amount,ts FROM payments WHERE id=? AND booking_id=? AND status='verified'").bind(parseInt(u.searchParams.get('p')) || 0, bid).first();
+    if (!p) return json({ error: 'Receipt not found.' }, 404);
+    const b = await db.prepare('SELECT client,service,items,price,paid FROM bookings WHERE id=?').bind(bid).first(), s = await settings(db);
+    const v = (await db.prepare("SELECT id,amount FROM payments WHERE booking_id=? AND status='verified' ORDER BY id").bind(bid).all()).results, last = Math.max(0, ...v.map(x => x.id));
+    return json({ ...b, amount: p.amount, ts: p.ts, pid: p.id, paid_to: p.id === last ? b.paid : v.filter(x => x.id <= p.id).reduce((a, x) => a + x.amount, 0), business_name: s.business_name, showroom: s.showroom, currency: s.currency, logo: s.logo, brand: s.brand });
+  }
+
   // Public: a client finds their private tracking link with a reference number and phone number
   if (res === 'track' && m === 'POST') {
     if (await limit(db, 'trk:' + (request.headers.get('cf-connecting-ip') || 'x'), 10, 3600)) return json({ error: 'Too many attempts. Please try again later.' }, 429);
@@ -158,11 +176,21 @@ async function handle({ request, env, ctx, params }) {
   // Public: clients change or cancel their own booking through a private link
   if (res === 'manage') {
     const bid = await untok(env, m === 'GET' ? new URL(request.url).searchParams.get('t') : body.t);
-    const b = bid && await db.prepare('SELECT client,service,date,time,status,address,stage,items,price,paid,created_at FROM bookings WHERE id=?').bind(bid).first();
+    const b = bid && await db.prepare('SELECT client,service,date,time,status,address,stage,items,due_date,price,paid,created_at FROM bookings WHERE id=?').bind(bid).first();
     if (!b) return json({ error: 'This link is not valid.' }, 404);
     const s = await settings(db), note = () => ctx.waitUntil(pushAll(env, new URL(request.url).origin));
-    if (m === 'GET') return json({ ...b, events: (await db.prepare('SELECT ts,label FROM events WHERE booking_id=? ORDER BY id DESC').bind(bid).all()).results, business_name: s.business_name, brand: s.brand, payinfo: s.payinfo, showroom: s.showroom });
+    if (m === 'GET') return json({ ...b, events: (await db.prepare('SELECT ts,label FROM events WHERE booking_id=? ORDER BY id DESC').bind(bid).all()).results, business_name: s.business_name, brand: s.brand, payinfo: s.payinfo, showroom: s.showroom, currency: s.currency, payments: await bpays(db, bid) });
     if (body.action === 'cancel') { await db.prepare("UPDATE bookings SET status='cancelled' WHERE id=?").bind(bid).run(); await ev(db, bid, 'Cancelled by you'); note(); return json({ ok: true }); }
+    if (body.action === 'proof') {
+      const amt = Math.round((+body.amount || 0) * 100) / 100;
+      if (!(amt > 0 && amt < 1e9)) return json({ error: 'Please enter the amount you paid.' }, 400);
+      if (typeof body.photo !== 'string' || !body.photo.startsWith('data:image/') || body.photo.length > 450000) return json({ error: 'Please attach a clear photo of the proof of payment.' }, 400);
+      if (await limit(db, 'pf:' + (request.headers.get('cf-connecting-ip') || 'x'), 6, 3600)) return json({ error: 'Too many uploads. Please try again later.' }, 429);
+      const kind = ['deposit', 'full', 'balance'].includes(body.kind) ? body.kind : 'deposit';
+      await db.prepare('INSERT INTO payments (booking_id,amount,kind,note,proof) VALUES (?,?,?,?,?)').bind(bid, amt, kind, String(body.note || '').slice(0, 200), body.photo).run();
+      await ev(db, bid, 'Proof of payment sent (' + money(s, amt) + ')'); note();
+      return json({ ok: true });
+    }
     if (body.action === 'move') {
       const h = JSON.parse(s.hours), dow = new Date(body.date + 'T00:00:00Z').getUTCDay();
       if (!/^\d{4}-\d\d-\d\d$/.test(body.date) || !/^\d\d:\d\d$/.test(body.time) || !h.days.includes(dow) || body.time < h.open || body.time > h.close) return json({ error: 'We are closed at that time. Please pick another.' }, 400);
@@ -196,11 +224,30 @@ async function handle({ request, env, ctx, params }) {
     if (!owner) return json({ error: 'Owner only' }, 403);
     try { return json((await db.prepare('SELECT day,source,n FROM visits WHERE day>=?').bind(new URL(request.url).searchParams.get('from') || '0000').all()).results); } catch { return json([]); }
   }
+  if (res === 'payments') {
+    if (m === 'GET') { try { return json((await db.prepare("SELECT p.id,p.booking_id,p.ts,p.amount,p.kind,p.note,p.status,b.client,b.service,b.phone FROM payments p JOIN bookings b ON b.id=p.booking_id WHERE b.status!='deleted' ORDER BY (p.status='pending') DESC, p.id DESC LIMIT 100").all()).results); } catch { return json([]); } }
+    if (m === 'PATCH' && id) {
+      const p = await db.prepare('SELECT * FROM payments WHERE id=?').bind(id).first();
+      if (!p || p.status !== 'pending' || !['verified', 'rejected'].includes(body.status)) return json({ error: 'Nothing to change' }, 400);
+      if (body.status === 'verified') {
+        const amt = Math.max(0, +body.amount || p.amount);
+        await db.prepare("UPDATE payments SET status='verified',amount=? WHERE id=?").bind(amt, id).run();
+        await db.prepare('UPDATE bookings SET paid=COALESCE(paid,0)+? WHERE id=?').bind(amt, p.booking_id).run();
+        await ev(db, p.booking_id, 'Payment of ' + money(s0, amt) + ' confirmed');
+      } else {
+        await db.prepare("UPDATE payments SET status='rejected' WHERE id=?").bind(id).run();
+        await ev(db, p.booking_id, 'We could not accept the proof of payment. Please contact us.');
+      }
+      await note(db, me, (body.status === 'verified' ? 'Confirmed' : 'Rejected') + ' payment #' + id);
+      return json({ ok: true });
+    }
+  }
+  if (res === 'payproof' && id) { const r = await db.prepare('SELECT proof FROM payments WHERE id=?').bind(id).first(); return json({ proof: r ? r.proof : '' }); }
   if (res === 'photo' && id) { const r = await db.prepare('SELECT photo FROM bookings WHERE id=?').bind(id).first(); return json({ photo: r ? r.photo : '' }); }
   if (res === 'export' && m === 'GET') {
     if (!owner) return json({ error: 'Owner only' }, 403);
     const { results } = await db.prepare("SELECT * FROM bookings WHERE status!='deleted' ORDER BY date,time").all();
-    const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"', cols = ['id', 'date', 'time', 'client', 'phone', 'service', 'status', 'address', 'amount', 'price', 'paid', 'source', 'items', 'notes'];
+    const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"', cols = ['id', 'date', 'time', 'client', 'phone', 'service', 'status', 'address', 'amount', 'price', 'paid', 'source', 'items', 'due_date', 'notes'];
     return new Response([cols.join(','), ...results.map(r => cols.map(c => q(r[c])).join(','))].join('\n'), { headers: { 'content-type': 'text/csv' } });
   }
   if (res === 'push') {
@@ -212,7 +259,7 @@ async function handle({ request, env, ctx, params }) {
     if (m === 'PUT') {
       if (!owner) return json({ error: 'Only the owner can change settings' }, 403);
       await note(db, me, 'Changed settings');
-      for (const k of ['business_name', 'catalog', 'country_code', 'hours', 'messages', 'brand', 'team', 'logo', 'currency', 'payinfo', 'showroom', 'stages', 'items']) if (typeof body[k] === 'string' && (body[k].trim() || ['payinfo', 'showroom', 'stages', 'items'].includes(k)))
+      for (const k of ['business_name', 'catalog', 'country_code', 'hours', 'messages', 'brand', 'team', 'logo', 'currency', 'payinfo', 'showroom', 'stages', 'items', 'leadtimes']) if (typeof body[k] === 'string' && (body[k].trim() || ['payinfo', 'showroom', 'stages', 'items', 'leadtimes'].includes(k)))
         await db.prepare('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(k, body[k].trim().slice(0, k === 'logo' ? 150000 : 4000)).run();
     }
     const s = await settings(db), names = JSON.parse(s.team || '[]').map(x => x.name);
@@ -225,25 +272,31 @@ async function handle({ request, env, ctx, params }) {
       const { results } = await db.prepare(`SELECT ${COLS} FROM bookings WHERE date>=? AND status!='deleted' ORDER BY date,time`).bind(from).all();
       const s = s0, cc = String(s.country_code).replace(/\D/g, '') || '265';
       const origin = new URL(request.url).origin;
-      return json(await Promise.all(results.map(async b => { const link = origin + '/manage.html?t=' + await tok(env, b.id); return { ...b, wa: waPhone(b.phone, cc), msg: message(b, s, link), rem: reminder(b, s, link), fu: followup(b, s), stg: b.stage ? stagemsg(b, s, link) : '' }; })));
+      return json(await Promise.all(results.map(async b => { const link = origin + '/manage.html?t=' + await tok(env, b.id); return { ...b, wa: waPhone(b.phone, cc), msg: message(b, s, link), rem: reminder(b, s, link), fu: followup(b, s), stg: b.stage ? stagemsg(b, s, link) : '', eta: b.due_date ? etamsg(b, s, link) : '', link }; })));
     }
     if (m === 'POST') { await note(db, me, 'Added booking for ' + String(body.client || '').slice(0, 40)); return insert(env, body, 'confirmed'); }
     if (m === 'PATCH' && id) {
       const sets = [], vals = [];
-      for (const k of ['status', 'client', 'phone', 'service', 'date', 'time', 'notes', 'address', 'amount', 'assigned', 'price', 'paid', 'stage', 'items']) if (k in body) {
+      for (const k of ['status', 'client', 'phone', 'service', 'date', 'time', 'notes', 'address', 'amount', 'assigned', 'price', 'paid', 'stage', 'items', 'due_date']) if (k in body) {
         if (k === 'status' && !STATUSES.includes(body.status)) return json({ error: 'Bad status' }, 400);
         sets.push(k + '=?'); vals.push(k === 'price' || k === 'paid' ? Math.max(0, +body[k] || 0) : String(body[k]).slice(0, 300));
       }
+      if (body.due_date && !/^\d{4}-\d\d-\d\d$/.test(body.due_date)) return json({ error: 'Invalid delivery date' }, 400);
       if (['confirmed', 'ready', 'done'].includes(body.status)) sets.push("confirmed_at=COALESCE(NULLIF(confirmed_at,''),CURRENT_TIMESTAMP)");
       if (!sets.length) return json({ error: 'Nothing to update' }, 400);
       if (body.date && body.time && await db.prepare("SELECT id FROM bookings WHERE date=? AND time=? AND status NOT IN ('cancelled','deleted') AND id!=?").bind(body.date, body.time, id).first()) return json({ error: 'That time slot is already taken.' }, 409);
-      const prev = await db.prepare('SELECT status,stage,date,time FROM bookings WHERE id=?').bind(id).first() || {};
+      const prev = await db.prepare('SELECT status,stage,date,time,due_date,service FROM bookings WHERE id=?').bind(id).first() || {};
       await db.prepare(`UPDATE bookings SET ${sets.join(',')} WHERE id=?`).bind(...vals, id).run();
       await note(db, me, 'Edited booking #' + id + ' (' + Object.keys(body).join(', ') + ')');
       const SL = { confirmed: 'Booking confirmed', ready: 'Your order is ready', done: 'Completed', cancelled: 'Booking cancelled' };
       if (body.status && body.status !== prev.status && SL[body.status]) await ev(db, id, SL[body.status]);
       if (body.stage && body.stage !== prev.stage) await ev(db, id, 'Now at stage: ' + body.stage);
       if ((body.date && body.date !== prev.date) || (body.time && body.time !== prev.time)) await ev(db, id, 'Rescheduled to ' + (body.date || prev.date) + ' at ' + (body.time || prev.time));
+      if ('due_date' in body && body.due_date !== (prev.due_date || '')) await ev(db, id, body.due_date ? (prev.due_date ? 'Delivery date changed to ' : 'Estimated delivery: ') + nice(body.due_date) : 'Delivery date cleared');
+      if (body.status === 'confirmed' && !('due_date' in body) && !prev.due_date) {
+        const dd = leadDays(s0.leadtimes, prev.service);
+        if (dd > 0) { const due = addDays(prev.date, dd); await db.prepare('UPDATE bookings SET due_date=? WHERE id=?').bind(due, id).run(); await ev(db, id, 'Estimated delivery: ' + nice(due) + ' (about ' + dd + ' days)'); }
+      }
       return json({ ok: true });
     }
     if (m === 'DELETE' && id) { await db.prepare("UPDATE bookings SET status='deleted',deleted_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run(); await note(db, me, 'Deleted booking #' + id); return json({ ok: true }); }
